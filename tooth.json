@@ -1,7 +1,7 @@
 {
 	"format_version": 3,
 	"format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
-	"tooth": "github.com/my-user/telegram-bot",
+	"tooth": "github.com/leaftail1880/ll-telegram-bot",
 	"version": "1.0.0",
 	"info": {
 		"name": "Telegram Bot",
@@ -20,13 +20,13 @@
 				{
 					"type": "zip",
 					"urls": [
-						"https://{{tooth}}/releases/download/v{{version}}/telegram-bot-windows-x64.zip"
+						"https://{{tooth}}/releases/download/v{{version}}/TelegramBot-windows-x64.zip"
 					],
 					"placements": [
 						{
 							"type": "dir",
-							"src": "telegram-bot/",
-							"dest": "plugins/telegram-bot/"
+							"src": "TelegramBot/",
+							"dest": "plugins/TelegramBot/"
 						}
 					]
 				}

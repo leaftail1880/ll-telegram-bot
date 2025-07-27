@@ -2,14 +2,15 @@
 
 #include "ll/api/mod/NativeMod.h"
 
-namespace my_mod {
+namespace telegram_bot {
 
-class MyMod {
+
+class TelegramBotMod {
 
 public:
-    static MyMod& getInstance();
+    static TelegramBotMod& getInstance();
 
-    MyMod() : mSelf(*ll::mod::NativeMod::current()) {}
+    TelegramBotMod() : mSelf(*ll::mod::NativeMod::current()) {}
 
     [[nodiscard]] ll::mod::NativeMod& getSelf() const { return mSelf; }
 
@@ -22,12 +23,16 @@ public:
     /// @return True if the mod is disabled successfully.
     bool disable();
 
-    // TODO: Implement this method if you need to unload the mod.
-    // /// @return True if the mod is unloaded successfully.
-    // bool unload();
+    /// @return True if the mod is unloaded successfully.
+    bool unload();
+
 
 private:
     ll::mod::NativeMod& mSelf;
+
+    std::thread       mBotThread;
+    std::atomic<bool> mBotRunning = false;
+    void              runBotThread();
 };
 
-} // namespace my_mod
+} // namespace telegram_bot
