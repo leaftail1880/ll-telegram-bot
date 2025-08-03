@@ -1,20 +1,21 @@
-#include "TelegramBot/TelegramBot.h"
-#include "ll/api/event/player/PlayerDisconnectEvent.h"
+#include "TelegramBot.h"
+#include "TelegramBot/events/Events.h"
+#include "TelegramBot/hooks/Hooks.h"
+#include "TelegramBot/telegram/BotThread.h"
 #include "ll/api/mod/RegisterHelper.h"
+#include <TelegramBot/Utils.h>
 #include <ll/api/Config.h>
 #include <ll/api/command/CommandHandle.h>
 #include <ll/api/command/CommandRegistrar.h>
 #include <ll/api/data/KeyValueDB.h>
 #include <ll/api/event/EventBus.h>
 #include <ll/api/event/ListenerBase.h>
+#include <ll/api/event/entity/MobDieEvent.h>
 #include <ll/api/event/player/PlayerJoinEvent.h>
 #include <ll/api/event/player/PlayerUseItemEvent.h>
 #include <ll/api/memory/Hook.h>
 #include <ll/api/service/Bedrock.h>
-#include <mc/network/PacketSender.h>
 #include <mc/network/ServerNetworkHandler.h>
-#include <mc/network/packet/SetLocalPlayerAsInitializedPacket.h>
-#include <mc/network/packet/TextPacket.h>
 #include <mc/server/ServerPlayer.h>
 #include <mc/server/commands/Command.h>
 #include <mc/server/commands/CommandOrigin.h>
@@ -23,233 +24,28 @@
 #include <mc/world/actor/player/PlayerListEntry.h>
 #include <mc/world/events/ChatEvent.h>
 #include <mc/world/level/Level.h>
-#include <tgbot/tgbot.h>
-#include <utility>
-
-
-struct ConfigChatSource {
-    std::string sourceName;
-
-    bool        sendToChatEnabled = true;
-    std::string sendToChatFormat  = "{{sourceName}} {{username}}: {{message}}";
-
-    bool        sendToConsoleLogEnabled = true;
-    std::string sendToConsoleLogFormat  = "{{username}}: {{message}}";
-};
-
-struct PlaceholderData {
-    std::string username;
-    std::string message;
-};
-
-struct Config {
-    int          version          = 2;
-    std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
-    std::int64_t telegramChatId   = 0;
-    std::int32_t telegramTopicId  = -1;
-
-    int telegramPollingTimeoutSec = 5;
-
-    bool telegramIgnoreCommands   = true;
-    bool telegramIgnoreOtherBots  = true;
-    bool telegramIgnoreOtherChats = true;
-
-    std::string minecraftGlobalChatPrefix;
-
-    std::string joinTextFormat  = "+{{username}}";
-    std::string leaveTextFormat = "-{{username}}";
-
-    ConfigChatSource minecraft{.sourceName = "Minecraft"};
-    ConfigChatSource telegram{
-        .sourceName             = "Telegram",
-        .sendToConsoleLogFormat = "{{sourceName}} {{username}}: {{message}}"
-    };
-};
-
-namespace {
-
-Config config;
-
-std::function<void(std::string)> sendTelegramMessage;
-
-
-// Event listeners
-ll::event::ListenerPtr playerJoinEventListener;
-ll::event::ListenerPtr playerLeaveEventListener;
-
-
-void broadcast(std::string_view message) {
-    ll::service::getLevel()->getPacketSender()->sendBroadcast(TextPacket::createRawMessage(message));
-}
-
-void replaceString(std::string& subject, const std::string& search, const std::string& replace) {
-    size_t pos = 0;
-    while ((pos = subject.find(search, pos)) != std::string::npos) {
-        subject.replace(pos, search.length(), replace);
-        pos += replace.length();
-    }
-}
-
-std::string
-replacePlaceholder(const std::string& format, const ConfigChatSource& chatSource, const PlaceholderData& placeholders) {
-    auto msg = std::string(format);
-    replaceString(msg, "{{sourceName}}", chatSource.sourceName);
-    replaceString(msg, "{{username}}", placeholders.username);
-    replaceString(msg, "{{message}}", placeholders.message);
-    return msg;
-}
-
-std::string getUsername(const TgBot::User::Ptr& user) {
-    if (!user->username.empty()) return user->username;
-    std::string fullname;
-    if (!user->firstName.empty()) fullname += user->firstName;
-    if (!user->lastName.empty()) {
-        if (!fullname.empty()) fullname += " ";
-        fullname += user->lastName;
-    }
-    if (!fullname.empty()) return fullname;
-    return std::to_string(user->id);
-}
-
-} // namespace
 
 
 namespace telegram_bot {
+
+Config                           config;
+std::function<void(std::string)> sendTelegramMessage;
 
 TelegramBotMod& TelegramBotMod::getInstance() {
     static TelegramBotMod instance;
     return instance;
 }
 
-
-// Credit: https://github.com/LordBombardir/LLPowerRanks/blob/main/src/mod/hooks/Hooks.cpp
-LL_AUTO_TYPE_INSTANCE_HOOK(
-    DisplayGameMessageHook,
-    HookPriority::Normal,
-    ServerNetworkHandler,
-    &ServerNetworkHandler::_displayGameMessage,
-    void,
-    const Player& sender,
-    ChatEvent&    chatEvent
-) {
-    if (sendTelegramMessage
-        && (config.minecraftGlobalChatPrefix.empty()
-            || chatEvent.mMessage->starts_with(config.minecraftGlobalChatPrefix))) {
-        auto& player = const_cast<Player&>(sender);
-
-        try {
-            const PlaceholderData placeholders{.username = player.getRealName(), .message = chatEvent.mMessage.get()};
-
-            if (config.minecraft.sendToChatEnabled) {
-                auto message = (replacePlaceholder(config.minecraft.sendToChatFormat, config.minecraft, placeholders));
-                sendTelegramMessage(message);
-            }
-            if (config.minecraft.sendToConsoleLogEnabled) {
-                TelegramBotMod::getInstance().getSelf().getLogger().info(
-                    replacePlaceholder(config.minecraft.sendToConsoleLogFormat, config.minecraft, placeholders)
-                );
-            }
-        } catch (const std::exception& e) {
-            TelegramBotMod::getInstance().getSelf().getLogger().error(
-                "DisplayGameMessage hook error: " + std::string(e.what())
-            );
-        }
-    }
-
-    return origin(sender, chatEvent);
-}
-
 bool TelegramBotMod::load() {
-    getSelf().getLogger().debug("Loading...");
+    telegram_bot::hooks::enable();
     return true;
 }
 
 bool TelegramBotMod::unload() {
-    getSelf().getLogger().debug("Unloading...");
+    telegram_bot::hooks::disable();
     return true;
 }
 
-
-void TelegramBotMod::runBotThread() {
-    try {
-        TgBot::Bot bot(config.telegramBotToken);
-
-        // Setup bot commands/events
-        bot.getEvents().onCommand("start", [&bot, this](const TgBot::Message::Ptr& message) {
-            getSelf().getLogger().info(getUsername(message->from) + " used /start");
-            bot.getApi().sendMessage(message->chat->id, "Minecraft Bot is running!");
-        });
-
-        bot.getEvents().onCommand("list", [&bot, this](const TgBot::Message::Ptr& message) {
-            getSelf().getLogger().info(getUsername(message->from) + " used /list");
-
-            auto&       players = ll::service::getLevel()->getPlayerList();
-            const auto  online  = players.size();
-            std::string text    = "Online " + std::to_string(online);
-            if (online != 0) text += ":";
-
-            for (const auto& player : players) {
-                text += "\n" + player.second.mName.get();
-            }
-
-            bot.getApi().sendMessage(message->chat->id, text);
-        });
-
-        bot.getEvents().onAnyMessage([this](const TgBot::Message::Ptr& message) {
-            if (config.telegramIgnoreOtherBots && message->from->isBot) return;
-            if (config.telegramIgnoreOtherChats && message->chat->id != config.telegramChatId) return;
-            if (config.telegramIgnoreCommands && message->text.starts_with("/")) return;
-            if (config.telegramTopicId != 1 && config.telegramTopicId != message->messageThreadId) return;
-
-            const PlaceholderData placeholders{.username = getUsername(message->from), .message = message->text};
-
-            if (config.telegram.sendToChatEnabled) {
-                broadcast(replacePlaceholder(config.telegram.sendToChatFormat, config.telegram, placeholders));
-            }
-            if (config.telegram.sendToConsoleLogEnabled) {
-                getSelf().getLogger().info(
-                    replacePlaceholder(config.telegram.sendToConsoleLogFormat, config.telegram, placeholders)
-                );
-            }
-        });
-
-        sendTelegramMessage = [&bot](const std::string& text) {
-            bot.getApi().sendMessage(
-                config.telegramChatId,
-                text,
-                nullptr,
-                nullptr,
-                nullptr,
-                "",
-                false,
-                std::vector<TgBot::MessageEntity::Ptr>(),
-                config.telegramTopicId == -1 ? 0 : config.telegramTopicId
-            );
-        };
-
-        TgBot::TgLongPoll longPoll(bot, 100, config.telegramPollingTimeoutSec);
-        getSelf().getLogger().info(
-            "Bot long polling thread started, username={} timeout={} chat={} topic={}",
-            bot.getApi().getMe()->username,
-            config.telegramPollingTimeoutSec,
-            config.telegramChatId,
-            config.telegramTopicId == -1 ? "no topic" : std::to_string(config.telegramTopicId)
-        );
-
-        while (mBotRunning) {
-            try {
-                longPoll.start();
-            } catch (const std::exception& e) {
-                getSelf().getLogger().error("Polling error: " + std::string(e.what()));
-                // Wait before retrying
-                std::this_thread::sleep_for(std::chrono::seconds(5));
-            }
-        }
-    } catch (const std::exception& e) {
-        getSelf().getLogger().error("Bot fatal: " + std::string(e.what()));
-    }
-    getSelf().getLogger().info("Thread stopped");
-}
 
 bool TelegramBotMod::enable() {
     const auto& configFilePath = getSelf().getConfigDir() / "config.json";
@@ -264,7 +60,6 @@ bool TelegramBotMod::enable() {
     }
 
     std::string errorReason;
-
 
     if (config.telegramBotToken == "INSERT YOUR TOKEN HERE" || config.telegramBotToken.empty()) {
         errorReason = "No token provided in config.";
@@ -282,57 +77,16 @@ bool TelegramBotMod::enable() {
         return false;
     }
 
-    auto& eventBus = ll::event::EventBus::getInstance();
 
+    telegram_bot::startThread();
+    telegram_bot::events::subscribe();
 
-    playerJoinEventListener =
-        eventBus.emplaceListener<ll::event::player::PlayerJoinEvent>([](ll::event::player::PlayerJoinEvent& event) {
-            if (config.joinTextFormat.empty()) return;
-
-            const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
-
-            auto message = replacePlaceholder(config.joinTextFormat, config.minecraft, placeholders);
-            sendTelegramMessage(message);
-        });
-
-    playerLeaveEventListener =
-        eventBus.emplaceListener<ll::event::PlayerDisconnectEvent>([](ll::event::player::PlayerDisconnectEvent& event) {
-            if (config.leaveTextFormat.empty()) return;
-
-            const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
-
-            auto message = replacePlaceholder(config.leaveTextFormat, config.minecraft, placeholders);
-            sendTelegramMessage(message);
-        });
-
-
-    if (!mBotRunning) {
-        mBotRunning = true;
-        mBotThread  = std::thread(&TelegramBotMod::runBotThread, this);
-        getSelf().getLogger().info("Enabled");
-    }
     return true;
 }
 
 bool TelegramBotMod::disable() {
-    if (mBotRunning) {
-        mBotRunning = false;
-        if (mBotThread.joinable()) mBotThread.join();
-        sendTelegramMessage = [this](const std::string&) {
-            getSelf().getLogger().warn("Call to disabled onMinecraftChat function. Enable mod to fix this");
-        };
-        getSelf().getLogger().info("Disabled");
-    }
-
-    auto& eventBus = ll::event::EventBus::getInstance();
-
-    if (playerJoinEventListener && eventBus.hasListener(playerJoinEventListener)) {
-        eventBus.removeListener(playerJoinEventListener);
-    }
-
-    if (playerLeaveEventListener && eventBus.hasListener(playerLeaveEventListener)) {
-        eventBus.removeListener(playerLeaveEventListener);
-    }
+    telegram_bot::stopThread();
+    telegram_bot::events::unsubscribe();
 
     return true;
 }

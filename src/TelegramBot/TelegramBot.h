@@ -4,6 +4,7 @@
 
 namespace telegram_bot {
 
+extern std::function<void(std::string)> sendTelegramMessage;
 
 class TelegramBotMod {
 
@@ -29,10 +30,6 @@ public:
 
 private:
     ll::mod::NativeMod& mSelf;
-
-    std::thread       mBotThread;
-    std::atomic<bool> mBotRunning = false;
-    void              runBotThread();
 };
 
 } // namespace telegram_bot
