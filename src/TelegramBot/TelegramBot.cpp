@@ -36,8 +36,15 @@ TelegramBotMod& TelegramBotMod::getInstance() {
     return instance;
 }
 
+struct BroadcastMessageCmdParams {
+    std::string message{};
+};
+
 bool TelegramBotMod::load() {
+
+
     telegram_bot::hooks::enable();
+
     return true;
 }
 
@@ -76,6 +83,24 @@ bool TelegramBotMod::enable() {
         );
         return false;
     }
+
+    auto commandRegistry = ll::service::getCommandRegistry();
+    if (!commandRegistry) {
+        throw std::runtime_error("failed to get command registry");
+    }
+
+    auto& command = ll::command::CommandRegistrar::getInstance().getOrCreateCommand(
+        "broadcastchatmessage",
+        "Sends message to other chats (telegram).",
+        CommandPermissionLevel::GameDirectors
+    );
+
+    command.overload<BroadcastMessageCmdParams>().required("message").execute(
+        [](CommandOrigin const&, CommandOutput& output, BroadcastMessageCmdParams const& param) {
+            output.success("Message '" + param.message + "' sent");
+            sendTelegramMessage(param.message);
+        }
+    );
 
 
     telegram_bot::startThread();
