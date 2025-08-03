@@ -30,11 +30,11 @@
 struct ConfigChatSource {
     std::string sourceName;
 
-    bool        logEnabled = true;
-    std::string userFormat = "{{sourceName}} {{username}}: {{message}}";
+    bool        sendToChatEnabled = true;
+    std::string sendToChatFormat  = "{{sourceName}} {{username}}: {{message}}";
 
-    bool        userEnabled = true;
-    std::string logFormat   = "{{username}}: {{message}}";
+    bool        sendToConsoleLogEnabled = true;
+    std::string sendToConsoleLogFormat  = "{{username}}: {{message}}";
 };
 
 struct PlaceholderData {
@@ -43,9 +43,10 @@ struct PlaceholderData {
 };
 
 struct Config {
-    int          version          = 1;
+    int          version          = 2;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
+    std::int32_t telegramTopicId  = 0;
 
     int telegramPollingTimeoutSec = 5;
 
@@ -53,11 +54,16 @@ struct Config {
     bool telegramIgnoreOtherBots  = true;
     bool telegramIgnoreOtherChats = true;
 
+    std::string minecraftGlobalChatPrefix;
+
     std::string joinTextFormat  = "+{{username}}";
     std::string leaveTextFormat = "-{{username}}";
 
     ConfigChatSource minecraft{.sourceName = "Minecraft"};
-    ConfigChatSource telegram{.sourceName = "Telegram", .logFormat = "{{sourceName}} {{username}}: {{message}}"};
+    ConfigChatSource telegram{
+        .sourceName             = "Telegram",
+        .sendToConsoleLogFormat = "{{sourceName}} {{username}}: {{message}}"
+    };
 };
 
 namespace {
@@ -132,13 +138,13 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         try {
             const PlaceholderData placeholders{.username = player.getRealName(), .message = chatEvent.mMessage.get()};
 
-            if (config.minecraft.userEnabled) {
-                auto message = (replacePlaceholder(config.minecraft.userFormat, config.minecraft, placeholders));
+            if (config.minecraft.sendToChatEnabled) {
+                auto message = (replacePlaceholder(config.minecraft.sendToChatFormat, config.minecraft, placeholders));
                 sendTelegramMessage(message);
             }
-            if (config.minecraft.logEnabled) {
+            if (config.minecraft.sendToConsoleLogEnabled) {
                 TelegramBotMod::getInstance().getSelf().getLogger().info(
-                    replacePlaceholder(config.minecraft.logFormat, config.minecraft, placeholders)
+                    replacePlaceholder(config.minecraft.sendToConsoleLogFormat, config.minecraft, placeholders)
                 );
             }
         } catch (const std::exception& e) {
@@ -191,25 +197,42 @@ void TelegramBotMod::runBotThread() {
             if (config.telegramIgnoreOtherBots && message->from->isBot) return;
             if (config.telegramIgnoreOtherChats && message->chat->id != config.telegramChatId) return;
             if (config.telegramIgnoreCommands && message->text.starts_with("/")) return;
+            if (config.telegramTopicId != 1 && config.telegramTopicId != message->messageThreadId) return;
 
             const PlaceholderData placeholders{.username = getUsername(message->from), .message = message->text};
 
-            if (config.telegram.userEnabled) {
-                broadcast(replacePlaceholder(config.telegram.userFormat, config.telegram, placeholders));
+            if (config.telegram.sendToChatEnabled) {
+                broadcast(replacePlaceholder(config.telegram.sendToChatFormat, config.telegram, placeholders));
             }
-            if (config.telegram.logEnabled) {
-                getSelf().getLogger().info(replacePlaceholder(config.telegram.logFormat, config.telegram, placeholders)
+            if (config.telegram.sendToConsoleLogEnabled) {
+                getSelf().getLogger().info(
+                    replacePlaceholder(config.telegram.sendToConsoleLogFormat, config.telegram, placeholders)
                 );
             }
         });
 
         sendTelegramMessage = [&bot](const std::string& text) {
-            bot.getApi().sendMessage(config.telegramChatId, text);
+            bot.getApi().sendMessage(
+                config.telegramChatId,
+                text,
+                nullptr,
+                nullptr,
+                nullptr,
+                "",
+                false,
+                std::vector<TgBot::MessageEntity::Ptr>(),
+                config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+            );
         };
 
-        // Use long polling with timeout (5 seconds)
         TgBot::TgLongPoll longPoll(bot, 100, config.telegramPollingTimeoutSec);
-        getSelf().getLogger().info("Bot long polling thread started");
+        getSelf().getLogger().info(
+            "Bot long polling thread started, username={} timeout={} chat={} topic={}",
+            bot.getApi().getMe()->username,
+            config.telegramPollingTimeoutSec,
+            config.telegramChatId,
+            config.telegramTopicId == -1 ? "no topic" : std::to_string(config.telegramTopicId)
+        );
 
         while (mBotRunning) {
             try {
@@ -234,6 +257,7 @@ bool TelegramBotMod::enable() {
 
         if (!ll::config::saveConfig(config, configFilePath)) {
             getSelf().getLogger().error("Cannot save default configurations to {}", configFilePath);
+            return false;
         }
     }
 
@@ -261,6 +285,8 @@ bool TelegramBotMod::enable() {
 
     playerJoinEventListener =
         eventBus.emplaceListener<ll::event::player::PlayerJoinEvent>([](ll::event::player::PlayerJoinEvent& event) {
+            if (config.joinTextFormat.empty()) return;
+
             const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
 
             auto message = replacePlaceholder(config.joinTextFormat, config.minecraft, placeholders);
@@ -269,6 +295,8 @@ bool TelegramBotMod::enable() {
 
     playerLeaveEventListener =
         eventBus.emplaceListener<ll::event::PlayerDisconnectEvent>([](ll::event::player::PlayerDisconnectEvent& event) {
+            if (config.leaveTextFormat.empty()) return;
+
             const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
 
             auto message = replacePlaceholder(config.leaveTextFormat, config.minecraft, placeholders);
