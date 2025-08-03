@@ -46,7 +46,7 @@ struct Config {
     int          version          = 2;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
-    std::int32_t telegramTopicId  = 0;
+    std::int32_t telegramTopicId  = -1;
 
     int telegramPollingTimeoutSec = 5;
 
@@ -132,9 +132,11 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     const Player& sender,
     ChatEvent&    chatEvent
 ) {
-    auto& player = const_cast<Player&>(sender);
+    if (sendTelegramMessage
+        && (config.minecraftGlobalChatPrefix.empty()
+            || chatEvent.mMessage->starts_with(config.minecraftGlobalChatPrefix))) {
+        auto& player = const_cast<Player&>(sender);
 
-    if (sendTelegramMessage) {
         try {
             const PlaceholderData placeholders{.username = player.getRealName(), .message = chatEvent.mMessage.get()};
 
