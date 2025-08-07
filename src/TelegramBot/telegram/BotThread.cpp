@@ -57,6 +57,7 @@ void runTelegramBot() {
         });
 
         bot.getEvents().onAnyMessage([](const TgBot::Message::Ptr& message) {
+            try {
             if (config.telegramIgnoreOtherBots && message->from->isBot) return;
             if (config.telegramIgnoreOtherChats && message->chat->id != config.telegramChatId) return;
             if (config.telegramIgnoreCommands && message->text.starts_with("/")) return;
@@ -72,6 +73,9 @@ void runTelegramBot() {
                 getSelf().getLogger().info(
                     Utils::replacePlaceholders(config.telegram.consoleLogFormat, config.telegram, placeholders)
                 );
+            }
+            } catch (const std::exception& e) {
+                getSelf().getLogger().error("onAnyMessage error: " + std::string(e.what()));
             }
         });
 
