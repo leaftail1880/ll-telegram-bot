@@ -1,6 +1,7 @@
 #include "./Hooks.h"
 #include "TelegramBot/Utils.h"
 #include <TelegramBot/TelegramBot.h>
+#include <TelegramBot/telegram/BotThread.h>
 #include <ll/api/memory/Hook.h>
 #include <ll/api/service/Bedrock.h>
 #include <mc/network/PacketSender.h>
@@ -30,9 +31,8 @@ LL_TYPE_INSTANCE_HOOK(
     const Player& sender,
     ChatEvent&    chatEvent
 ) {
-    if (sendTelegramMessage
-        && (config.minecraftGlobalChatPrefix.empty()
-            || chatEvent.mMessage->starts_with(config.minecraftGlobalChatPrefix))) {
+    if ((config.minecraftGlobalChatPrefix.empty() || chatEvent.mMessage->starts_with(config.minecraftGlobalChatPrefix)
+        )) {
         auto& player = const_cast<Player&>(sender);
 
         try {
@@ -40,7 +40,7 @@ LL_TYPE_INSTANCE_HOOK(
 
             if (!config.telegram.chatFormat.empty()) {
                 auto message = (Utils::replacePlaceholders(config.telegram.chatFormat, config.minecraft, placeholders));
-                telegram_bot::sendTelegramMessage(message);
+                telegram_bot::sendTelegramMessage(message, config.telegramChatId);
             }
             if (!config.minecraft.consoleLogFormat.empty()) {
                 TelegramBotMod::getInstance().getSelf().getLogger().info(
