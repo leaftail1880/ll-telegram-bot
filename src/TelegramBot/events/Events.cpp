@@ -5,6 +5,7 @@
 #include "mc/world/actor/ActorDamageByBlockSource.h"
 #include "mc/world/level/block/Block.h"
 #include <TelegramBot/TelegramBot.h>
+#include <TelegramBot/telegram/BotThread.h>
 #include <ll/api/event/EventBus.h>
 #include <ll/api/event/ListenerBase.h>
 #include <ll/api/event/entity/MobDieEvent.h>
@@ -35,7 +36,7 @@ void subscribe() {
             const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
 
             auto message = Utils::replacePlaceholders(config.minecraft.joinTextFormat, config.minecraft, placeholders);
-            sendTelegramMessage(message);
+            sendTelegramMessage(message, config.telegramChatId);
         });
 
     playerLeaveEventListener =
@@ -45,7 +46,7 @@ void subscribe() {
             const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
 
             auto message = Utils::replacePlaceholders(config.minecraft.leaveTextFormat, config.minecraft, placeholders);
-            sendTelegramMessage(message);
+            sendTelegramMessage(message, config.telegramChatId);
         });
 
     mobDieEventListener = eventBus.emplaceListener<ll::event::MobDieEvent>([](ll::event::MobDieEvent& event) {
@@ -80,7 +81,7 @@ void subscribe() {
                 auto message =
                     Utils::replaceKillPlaceholders(config.minecraft.deathTextFormat, config.minecraft, placeholders);
 
-                sendTelegramMessage(message);
+                sendTelegramMessage(message, config.telegramChatId);
             }
 
             if (config.minecraft.deathTextLogFormat.empty()) {
