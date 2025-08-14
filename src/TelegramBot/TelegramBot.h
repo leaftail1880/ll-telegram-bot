@@ -4,8 +4,6 @@
 
 namespace telegram_bot {
 
-extern std::function<void(std::string)> sendTelegramMessage;
-
 class TelegramBotMod {
 
 public:

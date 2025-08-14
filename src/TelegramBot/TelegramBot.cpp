@@ -28,8 +28,7 @@
 
 namespace telegram_bot {
 
-Config                           config;
-std::function<void(std::string)> sendTelegramMessage;
+Config config;
 
 TelegramBotMod& TelegramBotMod::getInstance() {
     static TelegramBotMod instance;
@@ -98,7 +97,7 @@ bool TelegramBotMod::enable() {
     command.overload<BroadcastMessageCmdParams>().required("message").execute(
         [](CommandOrigin const&, CommandOutput& output, BroadcastMessageCmdParams const& param) {
             output.success("Message '" + param.message + "' sent");
-            sendTelegramMessage(param.message);
+            sendTelegramMessage(param.message, config.telegramChatId);
         }
     );
 
