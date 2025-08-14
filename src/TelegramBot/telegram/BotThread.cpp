@@ -97,7 +97,7 @@ void runTelegramBot() {
                 if (config.telegramIgnoreOtherBots && message->from->isBot) return;
                 if (config.telegramIgnoreOtherChats && message->chat->id != config.telegramChatId) return;
                 if (config.telegramIgnoreCommands && message->text.starts_with("/")) return;
-                if (config.telegramTopicId != 1 && config.telegramTopicId != message->messageThreadId) return;
+                if (config.telegramTopicId != -1 && config.telegramTopicId != message->messageThreadId) return;
 
                 const PlaceholderData placeholders{.username = getUsername(message->from), .message = message->text};
 
@@ -141,7 +141,7 @@ void runTelegramBot() {
                 batch.swap(outgoingMsgTelegramQueue);
             }
 
-            while (!batch.empty()) {
+            while (!batch.empty() && mBotRunning) {
                 try {
                     auto& message = batch.front();
                     bot.getApi().sendMessage(
