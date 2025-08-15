@@ -23,6 +23,7 @@ struct ConfigChatSource {
 
 struct PlaceholderData {
     std::string username;
+    std::string name;
     std::string message;
 };
 
@@ -50,7 +51,7 @@ struct Config {
     ConfigChatSource minecraft{.sourceName = "Minecraft", .joinTextFormat = "", .leaveTextFormat = ""};
     ConfigChatSource telegram{
         .sourceName          = "Telegram",
-        .consoleLogFormat    = "{{sourceName}} {{username}}: {{message}}",
+        .consoleLogFormat    = "{{sourceName}} {{name}}: {{message}}",
         .clearFromColorCodes = true
     };
 };

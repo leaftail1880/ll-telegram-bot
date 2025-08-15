@@ -21,8 +21,7 @@ namespace telegram_bot {
 
 [[nodiscard]] ll::mod::NativeMod& getSelf() { return TelegramBotMod::getInstance().getSelf(); };
 
-std::string getUsername(const TgBot::User::Ptr& user) {
-    if (!user->username.empty()) return user->username;
+std::string getName(const TgBot::User::Ptr& user) {
     std::string fullname;
     if (!user->firstName.empty()) fullname += user->firstName;
     if (!user->lastName.empty()) {
@@ -30,9 +29,14 @@ std::string getUsername(const TgBot::User::Ptr& user) {
         fullname += user->lastName;
     }
     if (!fullname.empty()) return fullname;
+    if (!user->username.empty()) return user->username;
     return std::to_string(user->id);
 }
 
+std::string getUsername(const TgBot::User::Ptr& user) {
+    if (!user->username.empty()) return user->username;
+    return getName(user);
+}
 
 struct OutgoingTelegramMessage {
     std::string  text;
@@ -114,7 +118,11 @@ void runTelegramBot() {
                 if (config.telegramIgnoreCommands && message->text.starts_with("/")) return;
                 if (config.telegramTopicId != -1 && config.telegramTopicId != message->messageThreadId) return;
 
-                const PlaceholderData placeholders{.username = getUsername(message->from), .message = message->text};
+                const PlaceholderData placeholders{
+                    .username = getUsername(message->from),
+                    .name     = getName(message->from),
+                    .message  = message->text
+                };
 
                 if (!config.minecraft.chatFormat.empty()) {
                     threadSafeBroadcast(

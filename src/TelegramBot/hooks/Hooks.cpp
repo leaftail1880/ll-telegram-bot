@@ -1,5 +1,6 @@
 #include "./Hooks.h"
 #include "TelegramBot/Utils.h"
+#include "mc/network/NetEventCallback.h"
 #include <TelegramBot/TelegramBot.h>
 #include <TelegramBot/telegram/BotThread.h>
 #include <ll/api/memory/Hook.h>
@@ -20,45 +21,54 @@
 
 namespace telegram_bot::hooks {
 
-
-// Credit: https://github.com/LordBombardir/LLPowerRanks/blob/main/src/mod/hooks/Hooks.cpp
+// Credit: https://github.com/LordBombardir
+// Designed to work with LLPowerRanks and ChatRadius
 LL_TYPE_INSTANCE_HOOK(
-    DisplayGameMessageHook,
-    HookPriority::Normal,
+    PlayerSendMessageHook,
+    HookPriority::Lowest,
     ServerNetworkHandler,
-    &ServerNetworkHandler::_displayGameMessage,
+    &ServerNetworkHandler::$handle,
     void,
-    const Player& sender,
-    ChatEvent&    chatEvent
+    const NetworkIdentifier& identifier,
+    const TextPacket&        packet
 ) {
-    if ((config.minecraftGlobalChatPrefix.empty() || chatEvent.mMessage->starts_with(config.minecraftGlobalChatPrefix)
-        )) {
-        auto& player = const_cast<Player&>(sender);
+    try {
+        ServerPlayer* player =
+            ll::service::getServerNetworkHandler()->_getServerPlayer(identifier, packet.mSenderSubId);
 
-        try {
-            const PlaceholderData placeholders{.username = player.getRealName(), .message = chatEvent.mMessage.get()};
+        if (player) {
+            auto mMessage = packet.mMessage;
+            if ((config.minecraftGlobalChatPrefix.empty() || mMessage.starts_with(config.minecraftGlobalChatPrefix))) {
 
-            if (!config.telegram.chatFormat.empty()) {
-                auto message = (Utils::replacePlaceholders(config.telegram.chatFormat, config.minecraft, placeholders));
-                telegram_bot::sendTelegramMessage(message, config.telegramChatId);
+                const PlaceholderData placeholders{
+                    .username = player->getRealName(),
+                    .name     = player->getNameTag(),
+                    .message  = mMessage,
+                };
+
+                if (!config.telegram.chatFormat.empty()) {
+                    auto message =
+                        (Utils::replacePlaceholders(config.telegram.chatFormat, config.minecraft, placeholders));
+                    telegram_bot::sendTelegramMessage(message, config.telegramChatId);
+                }
+                if (!config.minecraft.consoleLogFormat.empty()) {
+                    TelegramBotMod::getInstance().getSelf().getLogger().info(
+                        Utils::replacePlaceholders(config.minecraft.consoleLogFormat, config.minecraft, placeholders)
+                    );
+                }
             }
-            if (!config.minecraft.consoleLogFormat.empty()) {
-                TelegramBotMod::getInstance().getSelf().getLogger().info(
-                    Utils::replacePlaceholders(config.minecraft.consoleLogFormat, config.minecraft, placeholders)
-                );
-            }
-        } catch (const std::exception& e) {
-            TelegramBotMod::getInstance().getSelf().getLogger().error(
-                "DisplayGameMessage hook error: " + std::string(e.what())
-            );
         }
-    }
 
-    return origin(sender, chatEvent);
+        return origin(identifier, packet);
+    } catch (const std::exception& e) {
+        TelegramBotMod::getInstance().getSelf().getLogger().error(
+            "PlayerSendMessageHook error: " + std::string(e.what())
+        );
+    }
 }
 
-void enable() { DisplayGameMessageHook::hook(); };
+void enable() { PlayerSendMessageHook::hook(); };
 
-void disable() { DisplayGameMessageHook::unhook(); };
+void disable() { PlayerSendMessageHook::unhook(); };
 
 } // namespace telegram_bot::hooks

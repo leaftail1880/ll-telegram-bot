@@ -15,18 +15,22 @@ Example:
 
 - player `leftail1880` sent message `hello` in minecraft chat
 
-  1. in server console appears `leaftail1880: hello` using minecraft.sendToConsoleLogFormat
-  2. in telegram chat appears `leaftail1880: hello` using telegram.sendToChatFormat
+  1. in server console appears `leaftail1880: hello` using minecraft.consoleLogFormat
+  2. in telegram chat appears `leaftail1880: hello` using telegram.chatFormat
 
 - user `leaftail1880` sent message `hello` in telegram chat
 
-  1. in server console appears `Telegram leaftail1880: hello` using telegram.sendToConsoleLogFormat
-  2. in minecraft chat appears `Telegram leaftail1880: hello` using minecraft.sendToChatFormat
+  1. in server console appears `Telegram leaftail1880: hello` using telegram.consoleLogFormat
+  2. in minecraft chat appears `Telegram leaftail1880: hello` using minecraft.chatFormat
 
 - user `leaftail1880` left
   1. in telegram chat appears `-leaftail1880` using telegram.leaveTextFormat
 
-Pending...
+For chat format you can use the following placeholders:
+{sourceName} - .source from the config the message is coming from
+{name} - short name. nameTag for minecraft and first name + last name for telegram
+{username} - user tag from minecraft or username from telegram. Fallbacks to name if empty for telegram
+{message} - Chat content
 
 ## Development
 

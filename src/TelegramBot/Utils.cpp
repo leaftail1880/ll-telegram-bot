@@ -29,6 +29,7 @@ std::string Utils::replacePlaceholders(
     replaceString(msg, "{{sourceName}}", chatSource.sourceName);
     replaceString(msg, "{{username}}", placeholders.username);
     replaceString(msg, "{{message}}", placeholders.message);
+    replaceString(msg, "{{name}}", placeholders.name);
     return msg;
 }
 
