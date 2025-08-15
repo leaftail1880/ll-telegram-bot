@@ -31,21 +31,21 @@ void subscribe() {
 
     playerJoinEventListener =
         eventBus.emplaceListener<ll::event::player::PlayerJoinEvent>([](ll::event::player::PlayerJoinEvent& event) {
-            if (config.minecraft.joinTextFormat.empty()) return;
+            if (config.telegram.joinTextFormat.empty()) return;
 
             const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
 
-            auto message = Utils::replacePlaceholders(config.minecraft.joinTextFormat, config.minecraft, placeholders);
+            auto message = Utils::replacePlaceholders(config.telegram.joinTextFormat, config.minecraft, placeholders);
             sendTelegramMessage(message, config.telegramChatId);
         });
 
     playerLeaveEventListener =
         eventBus.emplaceListener<ll::event::PlayerDisconnectEvent>([](ll::event::player::PlayerDisconnectEvent& event) {
-            if (config.minecraft.leaveTextFormat.empty()) return;
+            if (config.telegram.leaveTextFormat.empty()) return;
 
             const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
 
-            auto message = Utils::replacePlaceholders(config.minecraft.leaveTextFormat, config.minecraft, placeholders);
+            auto message = Utils::replacePlaceholders(config.telegram.leaveTextFormat, config.minecraft, placeholders);
             sendTelegramMessage(message, config.telegramChatId);
         });
 
@@ -77,9 +77,9 @@ void subscribe() {
             auto [token, params]    = event.source().getDeathMessage(placeholders.deadMobOrPlayer, &event.self());
             placeholders.translated = (getI18n().get(token, params, getI18n().getLocaleFor(config.telegram.langCode)));
 
-            if (!config.minecraft.deathTextFormat.empty()) {
+            if (!config.telegram.deathTextFormat.empty()) {
                 auto message =
-                    Utils::replaceKillPlaceholders(config.minecraft.deathTextFormat, config.minecraft, placeholders);
+                    Utils::replaceKillPlaceholders(config.telegram.deathTextFormat, config.minecraft, placeholders);
 
                 sendTelegramMessage(message, config.telegramChatId);
             }
@@ -89,6 +89,13 @@ void subscribe() {
                     Utils::replaceKillPlaceholders(config.minecraft.deathTextLogFormat, config.minecraft, placeholders);
 
                 TelegramBotMod::getInstance().getSelf().getLogger().info(message);
+            }
+
+            if (!config.minecraft.deathTextFormat.empty()) {
+                auto message =
+                    Utils::replaceKillPlaceholders(config.minecraft.deathTextFormat, config.minecraft, placeholders);
+
+                Utils::broadcast(message);
             }
         }
     });

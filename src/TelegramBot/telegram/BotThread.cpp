@@ -12,6 +12,7 @@
 #include <mc/world/actor/player/PlayerListEntry.h>
 #include <mc/world/events/ChatEvent.h>
 #include <mc/world/level/Level.h>
+#include <regex>
 #include <tgbot/tgbot.h>
 #include <thread>
 
@@ -46,17 +47,32 @@ std::mutex                          outgoingMsgTelegramMutex;
 std::queue<OutgoingTelegramMessage> outgoingMsgTelegramQueue;
 
 
-std::mutex                           outgoingMsgMinecraftMutex;
-std::queue<OutgoingMinecraftMessage> outgoingMsgMinecraftQueue;
-
 void threadSafeBroadcast(const std::string& message) {
-    std::lock_guard lock(outgoingMsgMinecraftMutex);
-    outgoingMsgMinecraftQueue.push({.text = message});
+    getSelf().getLogger().info("Thread safe broadcast message {}", message);
+    ll::coro::keepThis([msg = message]() -> ll::coro::CoroTask<void> {
+        try {
+            getSelf().getLogger().info("Thread safe broadcast message1 {}", msg);
+
+            Utils::broadcast(msg);
+            getSelf().getLogger().info("Thread safe broadcast message2 {}", msg);
+        } catch (const std::exception& e) {
+            getSelf().getLogger().error("threadSafeBroadcast error: " + std::string(e.what()));
+        }
+        co_return;
+    }).launch(ll::thread::ServerThreadExecutor::getDefault());
+}
+
+std::string removeFormatCodes(const std::string& input) {
+    std::regex pattern("§.");
+    return std::regex_replace(input, pattern, "");
 }
 
 void sendTelegramMessage(const std::string& message, std::int64_t chat) {
     std::lock_guard lock(outgoingMsgTelegramMutex);
-    outgoingMsgTelegramQueue.push({.text = message, .chatId = chat});
+
+    outgoingMsgTelegramQueue.push(
+        {.text = config.telegram.clearFromColorCodes ? removeFormatCodes(message) : message, .chatId = chat}
+    );
 }
 
 std::atomic<bool> mBotRunning = false;
@@ -77,25 +93,35 @@ void runTelegramBot() {
 
             auto chatId = message->chat->id;
             ll::coro::keepThis([chatId]() -> ll::coro::CoroTask<> {
+                getSelf().getLogger().info("start {}", chatId);
                 auto&       players = ll::service::getLevel()->getPlayerList();
                 const auto  online  = players.size();
                 std::string text    = "Online " + std::to_string(online);
                 if (online != 0) text += ":";
+                getSelf().getLogger().info("text1 {}", text);
 
                 for (const auto& player : players) {
                     text += "\n" + player.second.mName.get();
                 }
 
+                getSelf().getLogger().info("text2 {}", text);
+
+
                 sendTelegramMessage(text, chatId);
+
+                getSelf().getLogger().info("send {}", text);
+
                 co_return;
             }).launch(ll::thread::ServerThreadExecutor::getDefault());
         });
+
 
         bot.getEvents().onAnyMessage([](const TgBot::Message::Ptr& message) {
             try {
                 if (!message) return;
                 if (config.telegramIgnoreOtherBots && message->from->isBot) return;
                 if (config.telegramIgnoreOtherChats && message->chat->id != config.telegramChatId) return;
+                if (message->text.empty()) return;
                 if (config.telegramIgnoreCommands && message->text.starts_with("/")) return;
                 if (config.telegramTopicId != -1 && config.telegramTopicId != message->messageThreadId) return;
 
@@ -125,42 +151,19 @@ void runTelegramBot() {
             config.telegramTopicId == -1 ? "no topic" : std::to_string(config.telegramTopicId)
         );
 
-        while (mBotRunning) {
-            try {
-                longPoll.start();
-            } catch (const std::exception& e) {
-                getSelf().getLogger().error("Polling error: " + std::string(e.what()));
-                // Wait before retrying
-                std::this_thread::sleep_for(std::chrono::seconds(5));
-            }
 
-            // Process queued messages
-            std::queue<OutgoingTelegramMessage> batch;
-            {
-                std::lock_guard lock(outgoingMsgTelegramMutex);
-                batch.swap(outgoingMsgTelegramQueue);
+        using namespace ll::chrono_literals;
+        ll::coro::keepThis([]() -> ll::coro::CoroTask<> {
+            static int i = 0;
+            while (i < 20) {
+                co_await 1s;
+                std::cout << "This is coro in server thread\n";
+                ++i;
             }
+            co_return;
+        }).launch(ll::thread::ServerThreadExecutor::getDefault());
 
-            while (!batch.empty() && mBotRunning) {
-                try {
-                    auto& message = batch.front();
-                    bot.getApi().sendMessage(
-                        message.chatId,
-                        message.text,
-                        nullptr,
-                        nullptr,
-                        nullptr,
-                        "",
-                        false,
-                        std::vector<TgBot::MessageEntity::Ptr>(),
-                        config.telegramTopicId == -1 ? 0 : config.telegramTopicId
-                    );
-                } catch (const std::exception& e) {
-                    getSelf().getLogger().error("Telegram quened send message failed: " + std::string(e.what()));
-                }
-                batch.pop();
-            }
-        }
+
     } catch (const std::exception& e) {
         getSelf().getLogger().error("Bot fatal: " + std::string(e.what()));
     }
@@ -177,34 +180,11 @@ void stopThread() {
     }
 }
 
-using namespace ll::chrono_literals;
-
 void startThread() {
     if (!mBotRunning) {
         mBotRunning = true;
         mBotThread  = std::thread(&runTelegramBot);
-
-        ll::coro::keepThis([]() -> ll::coro::CoroTask<> {
-            while (mBotRunning) {
-                co_await 10_tick;
-                std::queue<OutgoingMinecraftMessage> batch;
-                {
-                    std::lock_guard lock(outgoingMsgMinecraftMutex);
-                    batch.swap(outgoingMsgMinecraftQueue);
-                }
-
-                while (!batch.empty()) {
-                    try {
-                        auto& message = batch.front();
-                        Utils::broadcast(message.text);
-                    } catch (const std::exception& e) {
-                        getSelf().getLogger().error("Minecraft send message failed: " + std::string(e.what()));
-                    }
-                    batch.pop();
-                }
-            }
-            co_return;
-        }).launch(ll::thread::ServerThreadExecutor::getDefault());
     }
 }
+
 } // namespace telegram_bot

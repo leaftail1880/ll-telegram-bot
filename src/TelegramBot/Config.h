@@ -7,19 +7,18 @@ namespace telegram_bot {
 struct ConfigChatSource {
     std::string sourceName;
 
-    std::string chatFormat = "{{sourceName}} {{username}}: {{message}}";
-
+    std::string chatFormat       = "{{sourceName}} {{username}}: {{message}}";
     std::string consoleLogFormat = "{{username}}: {{message}}";
 
-    std::string deathTextFormat = "{{translated}}";
-
+    std::string deathTextFormat    = "{{translated}}";
     std::string deathTextLogFormat = "{{killer}} killed {{deadMobOrPlayer}} cause={{cause}}";
 
-    std::string joinTextFormat = "+{{username}}";
-
+    std::string joinTextFormat  = "+{{username}}";
     std::string leaveTextFormat = "-{{username}}";
 
     std::string langCode = "en_US";
+
+    bool clearFromColorCodes = false;
 };
 
 struct PlaceholderData {
@@ -35,7 +34,7 @@ struct KillPlaceholderData {
 };
 
 struct Config {
-    int          version          = 5;
+    int          version          = 6;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;
@@ -49,7 +48,11 @@ struct Config {
     std::string minecraftGlobalChatPrefix{};
 
     ConfigChatSource minecraft{.sourceName = "Minecraft", .joinTextFormat = "", .leaveTextFormat = ""};
-    ConfigChatSource telegram{.sourceName = "Telegram", .consoleLogFormat = "{{sourceName}} {{username}}: {{message}}"};
+    ConfigChatSource telegram{
+        .sourceName          = "Telegram",
+        .consoleLogFormat    = "{{sourceName}} {{username}}: {{message}}",
+        .clearFromColorCodes = true
+    };
 };
 
 extern Config config;
