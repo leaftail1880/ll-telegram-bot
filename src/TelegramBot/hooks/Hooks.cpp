@@ -25,7 +25,7 @@ namespace telegram_bot::hooks {
 // Designed to work with LLPowerRanks and ChatRadius
 LL_TYPE_INSTANCE_HOOK(
     PlayerSendMessageHook,
-    HookPriority::Lowest,
+    HookPriority::High,
     ServerNetworkHandler,
     &ServerNetworkHandler::$handle,
     void,
