@@ -2,10 +2,10 @@
 #include "TelegramBot/Config.h"
 #include "TelegramBot/TelegramBot.h"
 #include "TelegramBot/Utils.h"
-#include "ll/api/chrono/GameChrono.h"
 #include "ll/api/coro/CoroTask.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
 #include <ll/api/Config.h>
+#include <ll/api/chrono/GameChrono.h>
 #include <ll/api/service/Bedrock.h>
 #include <mc/server/ServerPlayer.h>
 #include <mc/world/actor/player/Player.h>
@@ -48,13 +48,9 @@ std::queue<OutgoingTelegramMessage> outgoingMsgTelegramQueue;
 
 
 void threadSafeBroadcast(const std::string& message) {
-    getSelf().getLogger().info("Thread safe broadcast message {}", message);
-    ll::coro::keepThis([msg = message]() -> ll::coro::CoroTask<void> {
+    ll::coro::keepThis([message]() -> ll::coro::CoroTask<void> {
         try {
-            getSelf().getLogger().info("Thread safe broadcast message1 {}", msg);
-
-            Utils::broadcast(msg);
-            getSelf().getLogger().info("Thread safe broadcast message2 {}", msg);
+            Utils::broadcast(message);
         } catch (const std::exception& e) {
             getSelf().getLogger().error("threadSafeBroadcast error: " + std::string(e.what()));
         }
@@ -93,23 +89,16 @@ void runTelegramBot() {
 
             auto chatId = message->chat->id;
             ll::coro::keepThis([chatId]() -> ll::coro::CoroTask<> {
-                getSelf().getLogger().info("start {}", chatId);
                 auto&       players = ll::service::getLevel()->getPlayerList();
                 const auto  online  = players.size();
                 std::string text    = "Online " + std::to_string(online);
                 if (online != 0) text += ":";
-                getSelf().getLogger().info("text1 {}", text);
 
                 for (const auto& player : players) {
                     text += "\n" + player.second.mName.get();
                 }
 
-                getSelf().getLogger().info("text2 {}", text);
-
-
                 sendTelegramMessage(text, chatId);
-
-                getSelf().getLogger().info("send {}", text);
 
                 co_return;
             }).launch(ll::thread::ServerThreadExecutor::getDefault());
@@ -151,17 +140,42 @@ void runTelegramBot() {
             config.telegramTopicId == -1 ? "no topic" : std::to_string(config.telegramTopicId)
         );
 
-
-        using namespace ll::chrono_literals;
-        ll::coro::keepThis([]() -> ll::coro::CoroTask<> {
-            static int i = 0;
-            while (i < 20) {
-                co_await 1s;
-                std::cout << "This is coro in server thread\n";
-                ++i;
+        while (mBotRunning) {
+            try {
+                longPoll.start();
+            } catch (const std::exception& e) {
+                getSelf().getLogger().error("Polling error: " + std::string(e.what()));
+                // Wait before retrying
+                std::this_thread::sleep_for(std::chrono::seconds(5));
             }
-            co_return;
-        }).launch(ll::thread::ServerThreadExecutor::getDefault());
+
+            // Process queued messages
+            std::queue<OutgoingTelegramMessage> batch;
+            {
+                std::lock_guard lock(outgoingMsgTelegramMutex);
+                batch.swap(outgoingMsgTelegramQueue);
+            }
+
+            while (!batch.empty() && mBotRunning) {
+                try {
+                    auto& message = batch.front();
+                    bot.getApi().sendMessage(
+                        message.chatId,
+                        message.text,
+                        nullptr,
+                        nullptr,
+                        nullptr,
+                        "",
+                        false,
+                        std::vector<TgBot::MessageEntity::Ptr>(),
+                        config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+                    );
+                } catch (const std::exception& e) {
+                    getSelf().getLogger().error("Telegram quened send message failed: " + std::string(e.what()));
+                }
+                batch.pop();
+            }
+        }
 
 
     } catch (const std::exception& e) {
