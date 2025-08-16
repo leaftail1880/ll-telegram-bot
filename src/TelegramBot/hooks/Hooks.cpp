@@ -39,6 +39,9 @@ LL_TYPE_INSTANCE_HOOK(
         if (player) {
             auto mMessage = packet.mMessage;
             if ((config.minecraftGlobalChatPrefix.empty() || mMessage.starts_with(config.minecraftGlobalChatPrefix))) {
+                if (!config.minecraftGlobalChatPrefix.empty()) {
+                    mMessage = mMessage.erase(0, config.minecraftGlobalChatPrefix.size());
+                }
 
                 const PlaceholderData placeholders{
                     .username = player->getRealName(),
@@ -48,7 +51,7 @@ LL_TYPE_INSTANCE_HOOK(
 
                 if (!config.telegram.chatFormat.empty()) {
                     auto message =
-                        (Utils::replacePlaceholders(config.telegram.chatFormat, config.minecraft, placeholders));
+                        (Utils::replacePlaceholders(config.telegram.chatFormat, config.minecraft, placeholders, true));
                     telegram_bot::sendTelegramMessage(message, config.telegramChatId);
                 }
                 if (!config.minecraft.consoleLogFormat.empty()) {

@@ -1,5 +1,7 @@
 #include "Events.h"
+#include "TelegramBot/Config.h"
 #include "TelegramBot/Utils.h"
+#include "ll/api/event/command/ExecuteCommandEvent.h"
 #include "ll/api/event/player/PlayerDisconnectEvent.h"
 #include "mc/world/actor/ActorDamageByActorSource.h"
 #include "mc/world/actor/ActorDamageByBlockSource.h"
@@ -13,6 +15,7 @@
 #include <ll/api/event/player/PlayerUseItemEvent.h>
 #include <mc/locale/I18n.h>
 #include <mc/server/ServerPlayer.h>
+#include <mc/server/commands/CommandOrigin.h>
 #include <mc/world/actor/player/Player.h>
 #include <mc/world/actor/player/PlayerListEntry.h>
 #include <mc/world/events/ChatEvent.h>
@@ -24,6 +27,7 @@ namespace telegram_bot::events {
 ll::event::ListenerPtr playerJoinEventListener;
 ll::event::ListenerPtr playerLeaveEventListener;
 ll::event::ListenerPtr mobDieEventListener;
+ll::event::ListenerPtr commandEventListener;
 
 void subscribe() {
 
@@ -33,20 +37,22 @@ void subscribe() {
         eventBus.emplaceListener<ll::event::player::PlayerJoinEvent>([](ll::event::player::PlayerJoinEvent& event) {
             if (config.telegram.joinTextFormat.empty()) return;
 
-            const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
+            const PlaceholderData placeholders{.username = event.self().getRealName(), .name = "", .message = ""};
 
-            auto message = Utils::replacePlaceholders(config.telegram.joinTextFormat, config.minecraft, placeholders);
-            sendTelegramMessage(message, config.telegramChatId);
+            auto message =
+                Utils::replacePlaceholders(config.telegram.joinTextFormat, config.minecraft, placeholders, true);
+            sendTelegramMessage(message);
         });
 
     playerLeaveEventListener =
         eventBus.emplaceListener<ll::event::PlayerDisconnectEvent>([](ll::event::player::PlayerDisconnectEvent& event) {
             if (config.telegram.leaveTextFormat.empty()) return;
 
-            const PlaceholderData placeholders{.username = event.self().getRealName(), .message = ""};
+            const PlaceholderData placeholders{.username = event.self().getRealName(), .name = "", .message = ""};
 
-            auto message = Utils::replacePlaceholders(config.telegram.leaveTextFormat, config.minecraft, placeholders);
-            sendTelegramMessage(message, config.telegramChatId);
+            auto message =
+                Utils::replacePlaceholders(config.telegram.leaveTextFormat, config.minecraft, placeholders, true);
+            sendTelegramMessage(message);
         });
 
     mobDieEventListener = eventBus.emplaceListener<ll::event::MobDieEvent>([](ll::event::MobDieEvent& event) {
@@ -78,10 +84,14 @@ void subscribe() {
             placeholders.translated = (getI18n().get(token, params, getI18n().getLocaleFor(config.telegram.langCode)));
 
             if (!config.telegram.deathTextFormat.empty()) {
-                auto message =
-                    Utils::replaceKillPlaceholders(config.telegram.deathTextFormat, config.minecraft, placeholders);
+                auto message = Utils::replaceKillPlaceholders(
+                    config.telegram.deathTextFormat,
+                    config.minecraft,
+                    placeholders,
+                    true
+                );
 
-                sendTelegramMessage(message, config.telegramChatId);
+                sendTelegramMessage(message);
             }
 
             if (config.minecraft.deathTextLogFormat.empty()) {
@@ -99,6 +109,95 @@ void subscribe() {
             }
         }
     });
+
+    commandEventListener = eventBus.emplaceListener<ll::event::command::ExecutedCommandEvent>(
+        [](ll::event::command::ExecutedCommandEvent& event) {
+            try {
+                if (!config.commandLogs.enabled) return;
+
+                auto        command = event.commandContext().mCommand;
+                const auto& sender  = event.commandContext().mOrigin->getName();
+
+
+                if (command.starts_with("/")) command.erase(0, 1);
+
+                bool wasEmergent = false;
+
+                for (auto& emergency : config.commandLogs.emergency) {
+
+                    if (command.starts_with(emergency.commandStartsWith)) {
+                        bool ignored = false;
+                        for (auto& cmd : emergency.blacklist) {
+                            if (command.starts_with(cmd)) ignored = true;
+                        };
+
+                        if (ignored) continue;
+
+                        wasEmergent = true;
+                        TelegramBotMod::getInstance().getSelf().getLogger().info("EMERGENT {} /{}", sender, command);
+                        sendTelegramMessage(
+                            Utils::replacePlaceholders(
+                                emergency.message,
+                                {.sourceName = "CommandLogEmergency"},
+                                {
+                                    .username = sender,
+                                    .name     = sender,
+                                    .message  = command,
+                                },
+                                true
+                            ),
+                            config.commandLogs.telegramChatId,
+                            config.commandLogs.telegramTopicId
+                        );
+                    }
+                }
+
+                if (wasEmergent) return; // no need for duplicated messages
+
+                bool shouldLog = true;
+
+                if (config.commandLogs.whiteListEnabled) {
+                    for (auto& whitelistCmd : config.commandLogs.whitelist) {
+                        if (command.starts_with(whitelistCmd)) {
+                            shouldLog = true;
+                            break;
+                        }
+                    }
+
+                } else {
+                    for (auto& blacklistCmd : config.commandLogs.blacklist) {
+                        if (command.starts_with(blacklistCmd)) {
+                            shouldLog = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (shouldLog) {
+                    TelegramBotMod::getInstance().getSelf().getLogger().info("{} /{}", sender, command);
+
+                    sendTelegramMessage(
+                        Utils::replacePlaceholders(
+                            config.commandLogs.message,
+                            {.sourceName = "CommandLog"},
+                            {
+                                .username = sender,
+                                .name     = sender,
+                                .message  = command,
+                            },
+                            true
+                        ),
+                        config.commandLogs.telegramChatId,
+                        config.commandLogs.telegramTopicId
+                    );
+                }
+            } catch (const std::exception& e) {
+                TelegramBotMod::getInstance().getSelf().getLogger().error(
+                    "Command event listener error: " + std::string(e.what())
+                );
+            }
+        }
+    );
 };
 
 void unsubscribe() {
@@ -114,6 +213,10 @@ void unsubscribe() {
 
     if (mobDieEventListener && eventBus.hasListener(mobDieEventListener)) {
         eventBus.removeListener(mobDieEventListener);
+    }
+
+    if (commandEventListener && eventBus.hasListener(commandEventListener)) {
+        eventBus.removeListener(commandEventListener);
     }
 };
 } // namespace telegram_bot::events

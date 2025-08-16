@@ -97,7 +97,7 @@ bool TelegramBotMod::enable() {
     command.overload<BroadcastMessageCmdParams>().required("message").execute(
         [](CommandOrigin const&, CommandOutput& output, BroadcastMessageCmdParams const& param) {
             output.success("Message '" + param.message + "' sent");
-            sendTelegramMessage(param.message, config.telegramChatId);
+            sendTelegramMessage(Utils::escapeStringForTelegram(param.message));
         }
     );
 

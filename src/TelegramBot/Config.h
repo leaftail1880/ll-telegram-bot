@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace telegram_bot {
 
@@ -34,8 +35,36 @@ struct KillPlaceholderData {
     std::string cause;
 };
 
+struct CommandEmergencyLogConfig {
+    std::string              commandStartsWith;
+    std::vector<std::string> blacklist;
+    std::string              message;
+};
+
+struct CommandLogsConfig {
+    bool enabled = false;
+
+    std::int64_t telegramChatId  = 0;
+    std::int32_t telegramTopicId = -1;
+
+    std::vector<std::string> blacklist{"tp", "summon adv:biome ^^^-1.2"};
+    std::vector<std::string> whitelist{};
+    bool                     whiteListEnabled = false;
+
+    std::string message = "**{{username}}:** `{{message}}`";
+
+    std::vector<CommandEmergencyLogConfig> emergency = {
+        {
+         .commandStartsWith = "gamemode",
+         .blacklist         = {"gamemode spectator", "gamemode s"},
+         .message           = "**WARNING\\!**\n{{username}} used `{{message}}` @admin",
+         }
+    };
+};
+
+
 struct Config {
-    int          version          = 6;
+    int          version          = 7;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;
@@ -51,9 +80,12 @@ struct Config {
     ConfigChatSource minecraft{.sourceName = "Minecraft", .joinTextFormat = "", .leaveTextFormat = ""};
     ConfigChatSource telegram{
         .sourceName          = "Telegram",
+        .chatFormat          = "**{{username}}:** {{message}}",
         .consoleLogFormat    = "{{sourceName}} {{name}}: {{message}}",
-        .clearFromColorCodes = true
+        .clearFromColorCodes = true,
     };
+
+    CommandLogsConfig commandLogs;
 };
 
 extern Config config;

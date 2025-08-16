@@ -4,6 +4,7 @@
 #include "TelegramBot/Utils.h"
 #include "ll/api/coro/CoroTask.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
+#include "tgbot/types/LinkPreviewOptions.h"
 #include <ll/api/Config.h>
 #include <ll/api/chrono/GameChrono.h>
 #include <ll/api/service/Bedrock.h>
@@ -41,10 +42,7 @@ std::string getUsername(const TgBot::User::Ptr& user) {
 struct OutgoingTelegramMessage {
     std::string  text;
     std::int64_t chatId;
-};
-
-struct OutgoingMinecraftMessage {
-    std::string text;
+    std::int32_t topicId;
 };
 
 std::mutex                          outgoingMsgTelegramMutex;
@@ -67,12 +65,17 @@ std::string removeFormatCodes(const std::string& input) {
     return std::regex_replace(input, pattern, "");
 }
 
-void sendTelegramMessage(const std::string& message, std::int64_t chat) {
+void sendTelegramMessage(const std::string& message, std::int64_t chatId, std::int32_t topicId) {
     std::lock_guard lock(outgoingMsgTelegramMutex);
 
-    outgoingMsgTelegramQueue.push(
-        {.text = config.telegram.clearFromColorCodes ? removeFormatCodes(message) : message, .chatId = chat}
-    );
+    if (chatId == 0) chatId = config.telegramChatId;
+    if (topicId == 0) topicId = config.telegramTopicId;
+
+    outgoingMsgTelegramQueue.push({
+        config.telegram.clearFromColorCodes ? removeFormatCodes(message) : message,
+        chatId,
+        topicId,
+    });
 }
 
 std::atomic<bool> mBotRunning = false;
@@ -91,18 +94,20 @@ void runTelegramBot() {
         bot.getEvents().onCommand("list", [](const TgBot::Message::Ptr& message) {
             getSelf().getLogger().info(getUsername(message->from) + " used /list");
 
-            auto chatId = message->chat->id;
-            ll::coro::keepThis([chatId]() -> ll::coro::CoroTask<> {
+            auto chatId  = message->chat->id;
+            auto topicId = message->isTopicMessage ? message->messageThreadId : 0;
+
+            ll::coro::keepThis([chatId, topicId]() -> ll::coro::CoroTask<> {
                 auto&       players = ll::service::getLevel()->getPlayerList();
                 const auto  online  = players.size();
-                std::string text    = "Online " + std::to_string(online);
+                std::string text    = "**Online " + std::to_string(online) + "**";
                 if (online != 0) text += ":";
 
                 for (const auto& player : players) {
-                    text += "\n" + player.second.mName.get();
+                    text += "\n" + Utils::escapeStringForTelegram(player.second.mName.get());
                 }
 
-                sendTelegramMessage(text, chatId);
+                sendTelegramMessage(text, chatId, topicId);
 
                 co_return;
             }).launch(ll::thread::ServerThreadExecutor::getDefault());
@@ -165,21 +170,23 @@ void runTelegramBot() {
             }
 
             while (!batch.empty() && mBotRunning) {
+                auto& message = batch.front();
                 try {
-                    auto& message = batch.front();
                     bot.getApi().sendMessage(
                         message.chatId,
                         message.text,
                         nullptr,
                         nullptr,
                         nullptr,
-                        "",
+                        "MarkdownV2",
                         false,
                         std::vector<TgBot::MessageEntity::Ptr>(),
-                        config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+                        message.topicId == -1 ? 0 : message.topicId
                     );
                 } catch (const std::exception& e) {
-                    getSelf().getLogger().error("Telegram quened send message failed: " + std::string(e.what()));
+                    getSelf().getLogger().error(
+                        "Telegram quened send message '" + message.text + "' failed: " + std::string(e.what())
+                    );
                 }
                 batch.pop();
             }

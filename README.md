@@ -11,6 +11,8 @@ Connect your minecraft chat with telegram chat using telegram bot
 
 ## Config Documentation
 
+For formatting, see https://core.telegram.org/bots/api#formatting-options
+
 Example:
 
 - player `leftail1880` sent message `hello` in minecraft chat
