@@ -155,6 +155,9 @@ void runTelegramBot() {
 
         while (mBotRunning) {
             try {
+                getSelf().getLogger().info(
+                        "longPoll start")
+                );
                 longPoll.start();
             } catch (const std::exception& e) {
                 getSelf().getLogger().error("Polling error: " + std::string(e.what()));
@@ -165,6 +168,9 @@ void runTelegramBot() {
             // Process queued messages
             std::queue<OutgoingTelegramMessage> batch;
             {
+                getSelf().getLogger().info(
+                    "swapping quenes {}", batch.size())
+                );
                 std::lock_guard lock(outgoingMsgTelegramMutex);
                 batch.swap(outgoingMsgTelegramQueue);
             }
@@ -172,6 +178,9 @@ void runTelegramBot() {
             while (!batch.empty() && mBotRunning) {
                 auto& message = batch.front();
                 try {
+                    getSelf().getLogger().info(
+                        "sendMessage {}", message.text)
+                    );
                     bot.getApi().sendMessage(
                         message.chatId,
                         message.text,
