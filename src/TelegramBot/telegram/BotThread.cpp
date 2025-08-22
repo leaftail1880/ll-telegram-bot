@@ -1,3 +1,7 @@
+#ifndef HAVE_CURL
+#define HAVE_CURL true
+#endif
+
 #include "./BotThread.h"
 #include "TelegramBot/Config.h"
 #include "TelegramBot/TelegramBot.h"
@@ -18,10 +22,6 @@
 #include <tgbot/net/CurlHttpClient.h>
 #include <thread>
 #include <curl/curl.h>
-
-#ifndef HAVE_CURL
-#define HAVE_CURL true
-#endif
 
 namespace telegram_bot {
 
