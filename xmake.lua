@@ -10,6 +10,7 @@ end
 
 add_requires("levibuildscript")
 add_requires("tgbot-cpp")
+add_requires("curl")
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
