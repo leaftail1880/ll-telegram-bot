@@ -16,7 +16,7 @@
 #include <regex>
 #include <tgbot/tgbot.h>
 #include <thread>
-
+#include <curl/curl.h>
 
 namespace telegram_bot {
 
