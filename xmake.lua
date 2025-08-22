@@ -29,6 +29,7 @@ target("TelegramBot")
     add_defines("NOMINMAX", "UNICODE")
     add_packages("levilamina")
     add_packages("tgbot-cpp")
+    add_packages("curl")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
     set_languages("c++20")
