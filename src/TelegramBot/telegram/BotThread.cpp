@@ -18,6 +18,10 @@
 #include <thread>
 #include <curl/curl.h>
 
+#ifndef HAVE_CURL
+#define HAVE_CURL true
+#endif
+
 namespace telegram_bot {
 
 [[nodiscard]] ll::mod::NativeMod& getSelf() { return TelegramBotMod::getInstance().getSelf(); };
