@@ -15,6 +15,7 @@
 #include <mc/world/level/Level.h>
 #include <regex>
 #include <tgbot/tgbot.h>
+#include <tgbot/net/CurlHttpClient.h>
 #include <thread>
 #include <curl/curl.h>
 
