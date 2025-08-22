@@ -83,8 +83,24 @@ std::thread       mBotThread;
 
 void runTelegramBot() {
     try {
-        TgBot::Bot bot(telegram_bot::config.telegramBotToken);
+        TgBot::CurlHttpClient curlHttpClient;        
+        curl_easy_setopt(curlHttpClient.curlSettings, CURLOPT_TIMEOUT,  config.telegramPollingTimeoutSec);
+        TgBot::Bot bot(telegram_bot::config.telegramBotToken, curlHttpClient);
 
+    std::vector<TgBot::BotCommand::Ptr> commands;
+    TgBot::BotCommand::Ptr cmdArray(new TgBot::BotCommand);
+    cmdArray->command = "list";
+    cmdArray->description = "List online players";
+
+    commands.push_back(cmdArray);
+
+    cmdArray = TgBot::BotCommand::Ptr(new TgBot::BotCommand);
+    cmdArray->command = "start";
+    cmdArray->description = "Check if bot is running";
+    commands.push_back(cmdArray);
+
+    bot.getApi().setMyCommands(commands);
+        
         // Setup bot commands/events
         bot.getEvents().onCommand("start", [&bot](const TgBot::Message::Ptr& message) {
             getSelf().getLogger().info(getUsername(message->from) + " used /start");
@@ -144,7 +160,7 @@ void runTelegramBot() {
             }
         });
 
-        TgBot::TgLongPoll longPoll(bot, 100, config.telegramPollingTimeoutSec);
+        TgBot::TgLongPoll longPoll(bot, 100, config.telegramPollingTimeoutSec); // timeout is unused here. Thanks to tgbotcpp devs
         getSelf().getLogger().info(
             "Bot long polling thread started, username={} timeout={} chat={} topic={}",
             bot.getApi().getMe()->username,
@@ -152,12 +168,20 @@ void runTelegramBot() {
             config.telegramChatId,
             config.telegramTopicId == -1 ? "no topic" : std::to_string(config.telegramTopicId)
         );
+        bot.getApi().sendMessage(
+            config.telegramChatId,
+            config.telegramStartMessage,
+            nullptr,
+            nullptr,
+            nullptr,
+            "MarkdownV2",
+            false,
+            std::vector<TgBot::MessageEntity::Ptr>(),
+            config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+        );
 
         while (mBotRunning) {
             try {
-                getSelf().getLogger().info(
-                        "longPoll start"
-                );
                 longPoll.start();
             } catch (const std::exception& e) {
                 getSelf().getLogger().error("Polling error: " + std::string(e.what()));
@@ -168,9 +192,6 @@ void runTelegramBot() {
             // Process queued messages
             std::queue<OutgoingTelegramMessage> batch;
             {
-                getSelf().getLogger().info(
-                    "swapping quenes {}", batch.size()
-                );
                 std::lock_guard lock(outgoingMsgTelegramMutex);
                 batch.swap(outgoingMsgTelegramQueue);
             }
@@ -178,9 +199,6 @@ void runTelegramBot() {
             while (!batch.empty() && mBotRunning) {
                 auto& message = batch.front();
                 try {
-                    getSelf().getLogger().info(
-                        "sendMessage {}", message.text
-                    );
                     bot.getApi().sendMessage(
                         message.chatId,
                         message.text,
