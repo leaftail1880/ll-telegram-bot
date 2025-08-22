@@ -64,7 +64,7 @@ struct CommandLogsConfig {
 
 
 struct Config {
-    int          version          = 7;
+    int          version          = 8;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;
@@ -74,6 +74,8 @@ struct Config {
     bool telegramIgnoreCommands   = true;
     bool telegramIgnoreOtherBots  = true;
     bool telegramIgnoreOtherChats = true;
+
+    std::string telegramStartMessage = "Bot started!";
 
     std::string minecraftGlobalChatPrefix{};
 
