@@ -10,7 +10,7 @@ end
 
 add_requires("levibuildscript")
 add_requires("tgbot-cpp")
-add_requires("curl")
+add_requires("libcurl",{system = false})
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
@@ -29,7 +29,7 @@ target("TelegramBot")
     add_defines("NOMINMAX", "UNICODE")
     add_packages("levilamina")
     add_packages("tgbot-cpp")
-    add_packages("curl")
+    add_packages("libcurl")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
     set_languages("c++20")
