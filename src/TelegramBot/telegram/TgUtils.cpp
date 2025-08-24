@@ -62,10 +62,12 @@ void subscribe(TgBot::Bot& bot) {
     }
 
     bot.getApi().setMyCommands(botCmdFromCmd(userCommands));
-    auto placeholder    = std::make_shared<TgBot::BotCommandScopeChat>();
-    placeholder->chatId = config.telegramAdminChatId;
 
-    bot.getApi().setMyCommands(botCmdFromCmd(adminCommands), placeholder);
+    if (config.telegramAdminChatId != 0) {
+        auto placeholder    = std::make_shared<TgBot::BotCommandScopeChat>();
+        placeholder->chatId = config.telegramAdminChatId;
+        bot.getApi().setMyCommands(botCmdFromCmd(adminCommands), placeholder);
+    }
 };
 
 
