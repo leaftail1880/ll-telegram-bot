@@ -52,17 +52,24 @@ bool TelegramBotMod::unload() {
     return true;
 }
 
+std::filesystem::path getConfigPath() { return TelegramBotMod::getInstance().getSelf().getConfigDir() / "config.json"; }
+
+bool TelegramBotMod::saveConfig() {
+    const auto& configFilePath = getConfigPath();
+    if (!ll::config::saveConfig(config, configFilePath)) {
+        getSelf().getLogger().error("Cannot save default configurations to {}", configFilePath);
+        return false;
+    }
+    return true;
+}
 
 bool TelegramBotMod::enable() {
-    const auto& configFilePath = getSelf().getConfigDir() / "config.json";
+    const auto& configFilePath = getConfigPath();
     if (!ll::config::loadConfig(config, configFilePath)) {
         getSelf().getLogger().warn("Cannot load configurations from {}", configFilePath);
         getSelf().getLogger().info("Saving default configurations");
 
-        if (!ll::config::saveConfig(config, configFilePath)) {
-            getSelf().getLogger().error("Cannot save default configurations to {}", configFilePath);
-            return false;
-        }
+        if (!saveConfig()) return false;
     }
 
     std::string errorReason;

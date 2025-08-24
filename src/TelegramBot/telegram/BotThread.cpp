@@ -1,54 +1,30 @@
-#ifndef HAVE_CURL
-#define HAVE_CURL true
-#endif
-
 #include "./BotThread.h"
+#include "./commands/BlacklistMcCmd.h"
+#include "./commands/List.h"
+#include "./commands/Start.h"
+#include "MyCurlHttpClient.h"
 #include "TelegramBot/Config.h"
 #include "TelegramBot/TelegramBot.h"
 #include "TelegramBot/Utils.h"
 #include "ll/api/coro/CoroTask.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
-#include "tgbot/types/LinkPreviewOptions.h"
+#include <TelegramBot/telegram/TgUtils.h>
 #include <ll/api/Config.h>
 #include <ll/api/chrono/GameChrono.h>
-#include <ll/api/service/Bedrock.h>
-#include <mc/server/ServerPlayer.h>
-#include <mc/world/actor/player/Player.h>
-#include <mc/world/actor/player/PlayerListEntry.h>
-#include <mc/world/events/ChatEvent.h>
-#include <mc/world/level/Level.h>
+#include <memory>
 #include <regex>
 #include <tgbot/tgbot.h>
-#include <tgbot/net/CurlHttpClient.h>
 #include <thread>
-#include <curl/curl.h>
+
 
 namespace telegram_bot {
-
-[[nodiscard]] ll::mod::NativeMod& getSelf() { return TelegramBotMod::getInstance().getSelf(); };
-
-std::string getName(const TgBot::User::Ptr& user) {
-    std::string fullname;
-    if (!user->firstName.empty()) fullname += user->firstName;
-    if (!user->lastName.empty()) {
-        if (!fullname.empty()) fullname += " ";
-        fullname += user->lastName;
-    }
-    if (!fullname.empty()) return fullname;
-    if (!user->username.empty()) return user->username;
-    return std::to_string(user->id);
-}
-
-std::string getUsername(const TgBot::User::Ptr& user) {
-    if (!user->username.empty()) return user->username;
-    return getName(user);
-}
-
 struct OutgoingTelegramMessage {
     std::string  text;
     std::int64_t chatId;
     std::int32_t topicId;
 };
+
+[[nodiscard]] ll::mod::NativeMod& getSelf() { return TelegramBotMod::getInstance().getSelf(); };
 
 std::mutex                          outgoingMsgTelegramMutex;
 std::queue<OutgoingTelegramMessage> outgoingMsgTelegramQueue;
@@ -88,52 +64,15 @@ std::thread       mBotThread;
 
 void runTelegramBot() {
     try {
-        TgBot::CurlHttpClient curlHttpClient;        
-        curl_easy_setopt(curlHttpClient.curlSettings, CURLOPT_TIMEOUT,  config.telegramPollingTimeoutSec);
-        TgBot::Bot bot(telegram_bot::config.telegramBotToken, curlHttpClient);
+        TgBot::MyCurlHttpClient httpClient;
+        TgBot::Bot              bot(telegram_bot::config.telegramBotToken, httpClient);
 
-    std::vector<TgBot::BotCommand::Ptr> commands;
-    TgBot::BotCommand::Ptr cmdArray(new TgBot::BotCommand);
-    cmdArray->command = "list";
-    cmdArray->description = "List online players";
-
-    commands.push_back(cmdArray);
-
-    cmdArray = TgBot::BotCommand::Ptr(new TgBot::BotCommand);
-    cmdArray->command = "start";
-    cmdArray->description = "Check if bot is running";
-    commands.push_back(cmdArray);
-
-    bot.getApi().setMyCommands(commands);
-        
         // Setup bot commands/events
-        bot.getEvents().onCommand("start", [&bot](const TgBot::Message::Ptr& message) {
-            getSelf().getLogger().info(getUsername(message->from) + " used /start");
-            bot.getApi().sendMessage(message->chat->id, "Minecraft Bot is running!");
-        });
+        telegram_bot::tgcommands::start(bot);
+        telegram_bot::tgcommands::list();
+        telegram_bot::tgcommands::blacklistmccmd(bot);
 
-        bot.getEvents().onCommand("list", [](const TgBot::Message::Ptr& message) {
-            getSelf().getLogger().info(getUsername(message->from) + " used /list");
-
-            auto chatId  = message->chat->id;
-            auto topicId = message->isTopicMessage ? message->messageThreadId : 0;
-
-            ll::coro::keepThis([chatId, topicId]() -> ll::coro::CoroTask<> {
-                auto&       players = ll::service::getLevel()->getPlayerList();
-                const auto  online  = players.size();
-                std::string text    = "**Online " + std::to_string(online) + "**";
-                if (online != 0) text += ":";
-
-                for (const auto& player : players) {
-                    text += "\n" + Utils::escapeStringForTelegram(player.second.mName.get());
-                }
-
-                sendTelegramMessage(text, chatId, topicId);
-
-                co_return;
-            }).launch(ll::thread::ServerThreadExecutor::getDefault());
-        });
-
+        telegram_bot::tgcommands::subscribe(bot);
 
         bot.getEvents().onAnyMessage([](const TgBot::Message::Ptr& message) {
             try {
@@ -165,25 +104,28 @@ void runTelegramBot() {
             }
         });
 
-        TgBot::TgLongPoll longPoll(bot, 100, config.telegramPollingTimeoutSec); // timeout is unused here. Thanks to tgbotcpp devs
+        TgBot::TgLongPoll longPoll(bot); // timeout is unused here. Thanks to tgbotcpp devs
         getSelf().getLogger().info(
             "Bot long polling thread started, username={} timeout={} chat={} topic={}",
             bot.getApi().getMe()->username,
-            config.telegramPollingTimeoutSec,
+            config.telegramTimeoutSec,
             config.telegramChatId,
             config.telegramTopicId == -1 ? "no topic" : std::to_string(config.telegramTopicId)
         );
-        bot.getApi().sendMessage(
-            config.telegramChatId,
-            config.telegramStartMessage,
-            nullptr,
-            nullptr,
-            nullptr,
-            "MarkdownV2",
-            false,
-            std::vector<TgBot::MessageEntity::Ptr>(),
-            config.telegramTopicId == -1 ? 0 : config.telegramTopicId
-        );
+
+        if (!config.telegramStartMessage.empty()) {
+            bot.getApi().sendMessage(
+                config.telegramChatId,
+                config.telegramStartMessage,
+                nullptr,
+                nullptr,
+                nullptr,
+                "MarkdownV2",
+                false,
+                {},
+                config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+            );
+        }
 
         while (mBotRunning) {
             try {
@@ -212,7 +154,7 @@ void runTelegramBot() {
                         nullptr,
                         "MarkdownV2",
                         false,
-                        std::vector<TgBot::MessageEntity::Ptr>(),
+                        {},
                         message.topicId == -1 ? 0 : message.topicId
                     );
                 } catch (const std::exception& e) {
@@ -224,10 +166,23 @@ void runTelegramBot() {
             }
         }
 
-
+        if (!config.telegramStopMessage.empty()) {
+            bot.getApi().sendMessage(
+                config.telegramChatId,
+                config.telegramStopMessage,
+                nullptr,
+                nullptr,
+                nullptr,
+                "MarkdownV2",
+                false,
+                {},
+                config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+            );
+        }
     } catch (const std::exception& e) {
         getSelf().getLogger().error("Bot fatal: " + std::string(e.what()));
     }
+
     getSelf().getLogger().info("Thread stopped");
 }
 

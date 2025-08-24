@@ -69,13 +69,16 @@ struct Config {
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;
 
-    int telegramPollingTimeoutSec = 5;
+    std::int64_t telegramAdminChatId = 0;
+
+    long telegramTimeoutSec = 5;
 
     bool telegramIgnoreCommands   = true;
     bool telegramIgnoreOtherBots  = true;
     bool telegramIgnoreOtherChats = true;
 
-    std::string telegramStartMessage = "Bot started!";
+    std::string telegramStartMessage = "Bot started\\!";
+    std::string telegramStopMessage  = R"(Bot stopped\.\.\.)";
 
     std::string minecraftGlobalChatPrefix{};
 
