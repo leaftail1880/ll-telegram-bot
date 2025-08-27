@@ -118,6 +118,7 @@ void subscribe() {
                 auto        command = event.commandContext().mCommand;
                 const auto& sender  = event.commandContext().mOrigin->getName();
 
+                if (sender == "TelegramBot") return;
 
                 if (command.starts_with("/")) command.erase(0, 1);
 

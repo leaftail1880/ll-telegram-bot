@@ -2,6 +2,7 @@
 #include "TelegramBot/events/Events.h"
 #include "TelegramBot/hooks/Hooks.h"
 #include "TelegramBot/telegram/BotThread.h"
+#include "TelegramBot/telegram/TgUtils.h"
 #include "ll/api/mod/RegisterHelper.h"
 #include <TelegramBot/Utils.h>
 #include <ll/api/Config.h>
@@ -24,7 +25,6 @@
 #include <mc/world/actor/player/PlayerListEntry.h>
 #include <mc/world/events/ChatEvent.h>
 #include <mc/world/level/Level.h>
-
 
 namespace telegram_bot {
 
@@ -118,6 +118,7 @@ bool TelegramBotMod::enable() {
 bool TelegramBotMod::disable() {
     telegram_bot::stopThread();
     telegram_bot::events::unsubscribe();
+    telegram_bot::tgcommands::disable();
 
     return true;
 }

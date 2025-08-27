@@ -10,8 +10,19 @@ namespace telegram_bot::tgcommands {
 
 std::vector<Command> mCommands;
 
+bool exists(const std::string& command) {
+    return std::ranges::any_of(mCommands, [&command](auto& cmd) { return cmd.name == command; });
+}
 
-void add(const Command& command) { mCommands.push_back(command); };
+void add(const Command& command) {
+    if (exists(command.name)) {
+        telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().error("Cmd already exists " + command.name);
+    } else {
+        mCommands.push_back(command);
+    }
+};
+
+void disable() { mCommands.clear(); };
 
 bool isAllowed(const Command& cmd, const TgBot::Message::Ptr& message) {
     if (!cmd.adminOnly) return true;
@@ -105,4 +116,12 @@ void reply(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const std::strin
         message->isTopicMessage ? message->messageThreadId : 0
     );
 }
+
+std::string getParams(const std::string& text) {
+    auto space = text.find(' ');
+    if (space == std::string::npos) {
+        return ""; // or return text if you want the command itself when no params
+    }
+    return text.substr(space + 1); // +1 to skip the space
+};
 } // namespace telegram_bot

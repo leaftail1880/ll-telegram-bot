@@ -62,9 +62,31 @@ struct CommandLogsConfig {
     };
 };
 
+struct CustomCommandConfig {
+    std::string name;
+    std::string description;
+    std::string command;
+    bool        adminOnly = true;
+};
+
+struct CustomCommands {
+    std::vector<CustomCommandConfig> commands;
+    std::string                      langCode = "en_US";
+};
+
+struct LogSource {
+    std::string folder     = "logs";
+    std::string fileFormat = "player_actions_{year}-{month}-{day}.csv";
+    std::string parser     = "csv";
+};
+
+struct LogsSearchCommand {
+    bool                   enabled = false;
+    std::vector<LogSource> logSources{{}};
+};
 
 struct Config {
-    int          version          = 8;
+    int          version          = 11;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;
@@ -90,10 +112,18 @@ struct Config {
         .clearFromColorCodes = true,
     };
 
+    LogsSearchCommand logsSearchCommand;
+
     CommandLogsConfig commandLogs;
+
+    CustomCommands customCommands{
+        .commands{
+                  {.name = "allow", .description = "Adds player to allowlist", .command = "allowlist add $1"},
+                  {.name = "disallow", .description = "Removes player from allowlist", .command = "allowlist remove $1"}
+        }
+    };
 };
 
 extern Config config;
-
 
 } // namespace telegram_bot

@@ -12,8 +12,11 @@ struct Command {
     TgBot::EventBroadcaster::MessageListener listener;
 };
 
+bool exists(const std::string& command);
 
 void add(const Command& command);
+
+void disable();
 
 void subscribe(TgBot::Bot& bot);
 
@@ -30,4 +33,6 @@ void reply(
     const std::string&         text,
     const std::string&         parseMode = ""
 );
+
+std::string getParams(const std::string& text);
 } // namespace telegram_bot

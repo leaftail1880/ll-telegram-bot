@@ -1,11 +1,14 @@
 #include "./BotThread.h"
 #include "./commands/BlacklistMcCmd.h"
 #include "./commands/List.h"
+#include "./commands/Logs.h"
+#include "./commands/McCommand.h"
 #include "./commands/Start.h"
 #include "MyCurlHttpClient.h"
 #include "TelegramBot/Config.h"
 #include "TelegramBot/TelegramBot.h"
 #include "TelegramBot/Utils.h"
+#include "commands/Logs.h"
 #include "ll/api/coro/CoroTask.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
 #include <TelegramBot/telegram/TgUtils.h>
@@ -15,6 +18,7 @@
 #include <regex>
 #include <tgbot/tgbot.h>
 #include <thread>
+
 
 
 namespace telegram_bot {
@@ -71,6 +75,8 @@ void runTelegramBot() {
         telegram_bot::tgcommands::start(bot);
         telegram_bot::tgcommands::list();
         telegram_bot::tgcommands::blacklistmccmd(bot);
+        telegram_bot::tgcommands::mcCommand(bot);
+        telegram_bot::tgcommands::logs(bot);
 
         telegram_bot::tgcommands::subscribe(bot);
 
