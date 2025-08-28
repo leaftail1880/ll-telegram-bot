@@ -47,7 +47,7 @@ struct CommandLogsConfig {
     std::int64_t telegramChatId  = 0;
     std::int32_t telegramTopicId = -1;
 
-    std::vector<std::string> blacklist{"tp", "summon adv:biome ^^^-1.2"};
+    std::vector<std::string> blacklist{"tp", "summon adv:biome ^^^-1.2", "tell", "w", "msg", "broadcastchatmessage"};
     std::vector<std::string> whitelist{};
     bool                     whiteListEnabled = false;
 

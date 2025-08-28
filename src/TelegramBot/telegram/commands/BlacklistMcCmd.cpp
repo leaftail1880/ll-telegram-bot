@@ -13,31 +13,38 @@ void blacklistmccmd(TgBot::Bot& bot) {
          .adminOnly   = true,
          .listener =
              [&bot](const TgBot::Message::Ptr& message) {
-                 if (!message->replyToMessage) {
-                     return telegram_bot::reply(bot, message, "Reply to message to blacklist it!");
-                 }
-                 if (message->replyToMessage->entities.empty()) {
-                     return telegram_bot::reply(
-                         bot,
-                         message,
-                         "Wrong reply message type, expected message with command!"
-                     );
-                 }
+                 std::string params = getParams(message->text);
+                 std::string command;
 
-                 int start = 0;
-                 int end   = 0;
-                 for (auto& entity : message->replyToMessage->entities) {
-                     if (entity->type == TgBot::MessageEntity::Type::Code) {
-                         start = entity->offset;
-                         end   = entity->offset + entity->length;
+                 if (!params.empty()) {
+                     command = params;
+                 } else {
+                     if (!message->replyToMessage) {
+                         return telegram_bot::reply(bot, message, "Reply to message to blacklist it!");
                      }
-                 }
+                     if (message->replyToMessage->entities.empty()) {
+                         return telegram_bot::reply(
+                             bot,
+                             message,
+                             "Wrong reply message type, expected message with command!"
+                         );
+                     }
 
-                 if (end == 0 || start == end) {
-                     return telegram_bot::reply(bot, message, "Failed to find command code block in message");
-                 }
+                     int start = 0;
+                     int end   = 0;
+                     for (auto& entity : message->replyToMessage->entities) {
+                         if (entity->type == TgBot::MessageEntity::Type::Code) {
+                             start = entity->offset;
+                             end   = entity->offset + entity->length;
+                         }
+                     }
 
-                 auto command = message->replyToMessage->text.substr(start, end);
+                     if (end == 0 || start == end) {
+                         return telegram_bot::reply(bot, message, "Failed to find command code block in message");
+                     }
+
+                     command = message->replyToMessage->text.substr(start, end);
+                 }
 
                  telegram_bot::config.commandLogs.blacklist.push_back(command);
                  telegram_bot::TelegramBotMod::getInstance().saveConfig();

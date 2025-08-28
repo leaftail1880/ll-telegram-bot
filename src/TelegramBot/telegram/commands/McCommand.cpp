@@ -96,9 +96,8 @@ void mcCommand(TgBot::Bot& bot) {
                      std::int32_t topicId = message->isTopicMessage ? message->messageThreadId : 0;
                      ll::coro::keepThis([&command, chatId, topicId]() -> ll::coro::CoroTask<void> {
                          try {
-                             auto result = runCommand(command, config.customCommands.langCode);
-                             auto message =
-                                 (result.success ? "✅ " : "❌ ") + Utils::escapeStringForTelegram(result.output);
+                             auto result  = runCommand(command, config.customCommands.langCode);
+                             auto message = Utils::escapeStringForTelegram(result.output);
                              sendTelegramMessage(message, chatId, topicId);
                          } catch (const std::exception& e) {
                              TelegramBotMod::getInstance().getSelf().getLogger().error(

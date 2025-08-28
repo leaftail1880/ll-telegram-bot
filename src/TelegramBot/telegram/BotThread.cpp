@@ -53,7 +53,7 @@ void sendTelegramMessage(const std::string& message, std::int64_t chatId, std::i
     std::lock_guard lock(outgoingMsgTelegramMutex);
 
     if (chatId == 0) chatId = config.telegramChatId;
-    if (topicId == 0) topicId = config.telegramTopicId;
+    if (chatId == config.telegramChatId && topicId == 0) topicId = config.telegramTopicId;
 
     outgoingMsgTelegramQueue.push({
         config.telegram.clearFromColorCodes ? removeFormatCodes(message) : message,
