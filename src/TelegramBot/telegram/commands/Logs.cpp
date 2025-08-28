@@ -3,19 +3,66 @@
 #include "TelegramBot/TelegramBot.h"
 #include "TelegramBot/Utils.h"
 #include "TelegramBot/telegram/TgUtils.h"
-// #include "csv.hpp"
+#include "tgbot/types/InlineKeyboardButton.h"
+#include "tgbot/types/InlineKeyboardMarkup.h"
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <exception>
 #include <map>
+#include <memory>
 #include <regex>
 #include <string>
+#include <unordered_map>
 #include <utf8.h>
 
 #define TG_MESSAGE_LIMIT 4096
+#define PAGE_LIMIT       (TG_MESSAGE_LIMIT - 20)
 
-void fix_utf8_string(std::string& str) {
-    std::string temp;
-    utf8::replace_invalid(str.begin(), str.end(), back_inserter(temp));
-    str = temp;
+size_t utf8Size(const std::string& str) {
+    std::string::const_iterator it_start = str.begin();
+    std::string::const_iterator it_end   = str.end();
+
+    return static_cast<size_t>(utf8::distance(it_start, it_end));
+}
+
+std::string utf8Substr(const std::string& str, size_t start, size_t length = std::string::npos) {
+    if (str.empty()) return "";
+
+    // Declare iterators
+    std::string::const_iterator it_start = str.begin();
+    std::string::const_iterator it_end   = str.end();
+
+
+    // Advance to the start position
+    utf8::advance(it_start, start, str.end());
+
+    // If length is specified, find the end iterator
+    if (length != std::string::npos && (start + length) < utf8Size(str)) {
+        it_end = it_start;
+        utf8::advance(it_end, length, str.end());
+    }
+
+    return {it_start, it_end};
+}
+
+std::string getUuid() {
+    static std::random_device dev;
+    static std::mt19937       rng(dev());
+
+    std::uniform_int_distribution<int> dist(0, 15);
+
+    const char* v = "0123456789abcdef";
+    const bool  dash[] =
+        {false, false, false, false, true, false, true, false, true, false, true, false, false, false, false, false};
+
+    std::string res;
+    for (bool i : dash) {
+        if (i) res += "-";
+        res += v[dist(rng)];
+        res += v[dist(rng)];
+    }
+    return res;
 }
 
 // using namespace csv;
@@ -92,20 +139,125 @@ LogSearchParams parseLogSearchParams(const std::string& input) {
 }
 
 
-bool isLogField(LogSearchParams& params, const std::basic_string<char>& name, const std::string& value) {
-    if (!params.name.empty()) {
-        if (name == "Имя игрока") {
-            if (params.name == value) return true;
+struct PatternSegment {
+    std::string text;
+    bool        isWildcard;
+};
+
+class PrecompiledPattern {
+private:
+    std::vector<PatternSegment> segments;
+    bool                        startsWithWildcard;
+    bool                        endsWithWildcard;
+
+public:
+    PrecompiledPattern(std::vector<PatternSegment> segs, bool startWild, bool endWild)
+    : segments(std::move(segs)),
+      startsWithWildcard(startWild),
+      endsWithWildcard(endWild) {}
+
+    friend bool matchesPrecompiled(const std::string& line, const PrecompiledPattern& pattern);
+};
+
+std::unique_ptr<PrecompiledPattern> precompilePattern(const std::string& pattern) {
+    std::vector<PatternSegment> segments;
+    std::string                 currentSegment;
+    bool                        startsWithWildcard = (!pattern.empty() && pattern[0] == '*');
+    bool                        endsWithWildcard   = (!pattern.empty() && pattern.back() == '*');
+
+    // Parse the pattern into segments
+    for (char c : pattern) {
+        if (c == '*') {
+            if (!currentSegment.empty()) {
+                segments.push_back({currentSegment, false});
+                currentSegment.clear();
+            }
+            segments.push_back({"", true});
+        } else {
+            currentSegment += c;
         }
     }
 
-    return false;
+    if (!currentSegment.empty()) {
+        segments.push_back({currentSegment, false});
+    }
+
+    // Add wildcards at both ends if missing
+    if (!startsWithWildcard) {
+        segments.insert(segments.begin(), {"", true});
+    }
+
+    if (!endsWithWildcard) {
+        segments.push_back({"", true});
+    }
+
+    return std::make_unique<PrecompiledPattern>(
+        std::move(segments),
+        true, // After adding, it always starts with wildcard
+        true  // After adding, it always ends with wildcard
+    );
+}
+
+bool matchesPrecompiled(const std::string& line, const PrecompiledPattern& pattern) {
+    const auto& segments = pattern.segments;
+    size_t      linePos  = 0;
+    size_t      segIndex = 0;
+    size_t      segCount = segments.size();
+
+    // Handle empty line case
+    if (line.empty()) {
+        return false;
+    }
+
+    // Special case: pattern is just a wildcard
+    if (segCount == 1 && segments[0].isWildcard) {
+        return true;
+    }
+
+    // Match beginning (if not starting with wildcard)
+    if (!pattern.startsWithWildcard) {
+        const auto& firstSeg = segments[0];
+        if (line.find(firstSeg.text) != 0) return false;
+        linePos  = firstSeg.text.size();
+        segIndex = 1;
+    }
+
+    // Match middle segments
+    while (segIndex < segCount - (pattern.endsWithWildcard ? 0 : 1)) {
+        const auto& seg = segments[segIndex];
+
+        if (seg.isWildcard) {
+            segIndex++;
+            continue;
+        }
+
+        size_t foundPos = line.find(seg.text, linePos);
+        if (foundPos == std::string::npos) return false;
+
+        linePos = foundPos + seg.text.size();
+        segIndex++;
+    }
+
+    // Match end (if not ending with wildcard)
+    if (!pattern.endsWithWildcard) {
+        const auto& lastSeg = segments.back();
+        if (line.size() < lastSeg.text.size()
+            || line.compare(line.size() - lastSeg.text.size(), lastSeg.text.size(), lastSeg.text) != 0) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 using StatusUpdate = std::function<void(const std::string&)>;
 
-
-std::string searchForLogsInFile(LogSearchParams& params, const std::string& filename, StatusUpdate& onUpdate) {
+std::string searchForLogsInFile(
+    LogSearchParams&               params,
+    const telegram_bot::LogSource& source,
+    const std::string&             filename,
+    StatusUpdate&                  onUpdate
+) {
     onUpdate("Reading " + filename);
 
     std::string   result;
@@ -116,128 +268,66 @@ std::string searchForLogsInFile(LogSearchParams& params, const std::string& file
         return "Error opening file";
     }
 
-    std::regex pattern("");
-    bool       patternEmpty = true;
+    int lineCount = 0;
+    int each      = 100000;
+
+    // Precompile the pattern once
+    std::unique_ptr<PrecompiledPattern> compiledPattern;
+    bool                                emptyPattern = true;
+
     if (!params.text.empty()) {
-        patternEmpty = false;
-        pattern      = std::regex(params.text);
+        emptyPattern    = false;
+        compiledPattern = precompilePattern(params.text);
     }
 
-    int line_count = 0;
+
     while (std::getline(file, line)) {
-        if (line_count % 1000000 == 0) {
+        if (lineCount > 0 && lineCount % each == 0) {
+            if (lineCount >= each * 5) {
+                each = each * 10;
+            }
+            onUpdate(
+                "Reading " + filename + " line " + std::to_string(lineCount) + " found " + std::to_string(result.size())
+                + " (update each " + std::to_string(each) + ")"
+            );
+        };
+        if (lineCount % 100000 == 0) {
             telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
-                "Reading " + filename + " line "
-                + std::to_string(line_count) // + " read " + std::to_string(result.size()
+                "Reading " + filename + " line " + std::to_string(lineCount) + " found " + std::to_string(result.size())
             );
         }
-        bool nameFound = (params.name.empty() || line.find("," + params.name + ",") != std::string::npos);
-        bool match     = patternEmpty || std::regex_match(line, pattern);
-        if (nameFound && match) {
-            result += line + "\n";
-        }
-        line_count++;
 
-        if (result.size() > TG_MESSAGE_LIMIT * 50) {
-            result += "\nTRUNKATED";
+        bool nameFilter = true;
+        if (!params.name.empty()) {
+            nameFilter = false;
+
+            std::vector<std::string> fields;
+            std::stringstream        ss(line);
+            std::string              field;
+
+            while (std::getline(ss, field, source.columnDelimeter[0])) {
+                fields.push_back(field);
+            }
+
+            if (fields.size() >= source.nameColumnIndex + 1) {
+                std::string& third_field = fields[source.nameColumnIndex];
+                if (third_field == params.name) nameFilter = true;
+            }
+        }
+        bool match = emptyPattern || matchesPrecompiled(line, *compiledPattern);
+
+        if (nameFilter && match) {
+            result += "\n" + line;
+        }
+
+        // size is expensive, calculate each 10 lines
+        if (lineCount % 10 == 0 && utf8Size(result) > PAGE_LIMIT * source.maxPages) {
+            result += "\n\nEND";
             break;
         }
+
+        lineCount++;
     }
-
-    // CSVReader    reader(filename);
-    // std::int64_t rowI = 0;
-    // CSVRow       row;
-    // bool         need = true;
-    // while (need) {
-    //     if (rowI > 1749077) {
-    //         telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
-    //             "Reading " + filename + " line " + std::to_string(rowI) // + " read " + std::to_string(result.size()
-    //         );
-    //     }
-    //     need = reader.read_row(row);
-    //     if (rowI > 1749077) {
-    //         telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
-    //             "Reading " + filename + " line " + std::to_string(rowI) + " done "
-    //             + (need ? "yes" : "no") // + " read " + std::to_string(result.size()
-    //         );
-    //     }
-    //     rowI++;
-    // };
-
-    // std::string result;
-
-    // std::vector<std::string> colNames;
-
-    // int64        each = 100000;
-
-    // std::regex textSearch("");
-    // bool       textSearchEnabled = false;
-    // if (!params.text.empty()) {
-    //     textSearchEnabled = true;
-    //     textSearch        = std::regex(params.text);
-    // }
-
-    // std::ofstream ost{"test.txt", std::ios_base::app};
-
-    // for (CSVRow& row : reader) { // Input iterator
-    // ost << "\n" + std::to_string(rowI) + " ";
-
-    // if (colNames.empty()) colNames = row.get_col_names();
-    // int i = 0;
-
-    // std::string rowContent;
-    // bool        fieldsMatch = false;
-
-    // if (rowI > 0 && rowI % each == 0) {
-    //     if (rowI >= each * 5) {
-    //         each = each * 5;
-    //     }
-    //     onUpdate(
-    //         "Reading " + filename + " line " + std::to_string(rowI) + " read " + std::to_string(result.size())
-    //         + " (update each " + std::to_string(each) + ")"
-    //     );
-    // };
-    // if (rowI % 10000 == 0) {
-    //     telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
-    //         "Reading " + filename + " line " + std::to_string(rowI) // + " read " + std::to_string(result.size()
-    //     );
-    //     rowI = 0;
-    // }
-
-    // for (CSVField& field : row) {
-    //     auto& colName = colNames[i];
-    //     i++;
-    //     std::string content  = field.get<std::string>();
-    //     rowContent          += " :" + content;
-
-
-    //     if (isLogField(params, colName, content)) {
-    //         fieldsMatch = true;
-    //     }
-    // }
-
-    // ost << rowContent;
-
-    // auto rowMatch = (textSearchEnabled ? std::regex_match(rowContent, textSearch) : true);
-    // if (fieldsMatch && rowMatch) {
-    //     // add header if empty
-    //     if (result.empty()) {
-    //         for (auto& colName : colNames) {
-    //             result += colName;
-    //             result += " ";
-    //         }
-    //         result += "\n";
-    //     }
-
-    //     result += "\n" + rowContent;
-    // }
-
-    // ost << "  result size: " + std::to_string(result.size());
-
-    // rowI++;
-
-
-    // }
 
     return result;
 }
@@ -283,7 +373,7 @@ searchForLogsInSource(LogSearchParams& params, telegram_bot::LogSource& source, 
         telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info("found: " + filename);
 
         if (filename == expectedFileName) {
-            return {.result = searchForLogsInFile(params, entry.path().string(), onUpdate), .info = ""};
+            return {.result = searchForLogsInFile(params, source, entry.path().string(), onUpdate), .info = ""};
         }
     };
 
@@ -302,7 +392,63 @@ LogsSearchResult searchForLogs(LogSearchParams& params, StatusUpdate& onUpdate) 
 }
 
 
+struct BrowseState {
+    std::string  results;
+    std::string  uuid;
+    int          page;
+    int          maxPages;
+    std::int64_t chatId;
+    std::int32_t messageId;
+};
+
+#define DEL  "0"
+#define NEXT "1"
+#define PREV "2"
+
+
 namespace telegram_bot::tgcommands {
+
+std::unordered_map<std::string, BrowseState> browseStates;
+
+void applyBrowseState(TgBot::Bot& bot, const BrowseState& state) {
+    size_t start = state.page * (PAGE_LIMIT);
+    size_t end   = (PAGE_LIMIT);
+    auto   text = "```\n" + telegram_bot::Utils::escapeStringForTelegram(utf8Substr(state.results, start, end)) + "```";
+
+    using namespace TgBot;
+
+    InlineKeyboardMarkup::Ptr              keyboard(new InlineKeyboardMarkup);
+    std::vector<InlineKeyboardButton::Ptr> row0;
+    InlineKeyboardButton::Ptr              btn(new InlineKeyboardButton);
+    btn->text         = "<";
+    btn->callbackData = state.uuid + PREV;
+    row0.push_back(btn);
+
+    btn               = std::make_shared<InlineKeyboardButton>();
+    btn->text         = std::to_string(state.page) + "/" + std::to_string(state.maxPages);
+    btn->callbackData = " empty ";
+    row0.push_back(btn);
+
+    if (state.page < state.maxPages) {
+        btn               = std::make_shared<InlineKeyboardButton>();
+        btn->text         = ">";
+        btn->callbackData = state.uuid + NEXT;
+        row0.push_back(btn);
+    }
+
+
+    keyboard->inlineKeyboard.push_back(row0);
+
+    std::vector<InlineKeyboardButton::Ptr> row1;
+    btn               = std::make_shared<InlineKeyboardButton>();
+    btn->text         = "Close";
+    btn->callbackData = state.uuid + DEL;
+    row1.push_back(btn);
+    keyboard->inlineKeyboard.push_back(row1);
+
+
+    bot.getApi().editMessageText(text, state.chatId, state.messageId, "", "MarkdownV2", nullptr, keyboard);
+}
 
 void logsSearchInit(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const std::string& params) {
     auto parsed = parseLogSearchParams(params);
@@ -322,7 +468,10 @@ void logsSearchInit(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const s
         message->isTopicMessage ? message->messageThreadId : 0
     );
 
-    StatusUpdate onUpdate = [&bot, &smessage](const std::string& text) {
+    std::string  lastText;
+    StatusUpdate onUpdate = [&bot, &smessage, &lastText](const std::string& text) {
+        if (text == lastText) return;
+        lastText = text;
         bot.getApi().editMessageText(text, smessage->chat->id, smessage->messageId);
     };
 
@@ -330,18 +479,23 @@ void logsSearchInit(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const s
         auto search = searchForLogs(parsed, onUpdate);
 
         if (search.result.empty()) {
-            telegram_bot::reply(bot, message, "No logs found\n" + search.info.substr(0, 1000));
+            onUpdate("No logs found\n" + utf8Substr(search.info, 0, 1000));
         } else {
+            std::string uuid = getUuid();
 
+            BrowseState state{
+                .results   = search.result,
+                .uuid      = uuid,
+                .page      = 0,
+                .maxPages  = static_cast<int>(utf8Size(search.result) / PAGE_LIMIT),
+                .chatId    = smessage->chat->id,
+                .messageId = smessage->messageId
+            };
 
-            TelegramBotMod::getInstance().getSelf().getLogger().info("telegram runCommand res: " + search.result);
-            fix_utf8_string(search.result);
-            telegram_bot::reply(
-                bot,
-                message,
-                "```" + Utils::escapeStringForTelegram(search.result.substr(0, TG_MESSAGE_LIMIT)) + "```",
-                "MarkdownV2"
-            );
+            applyBrowseState(bot, state);
+            TelegramBotMod::getInstance().getSelf().getLogger().info("set uuid {}", uuid);
+
+            browseStates[uuid] = state;
         }
     } catch (const std::exception& e) {
         auto error = std::string(e.what());
@@ -381,7 +535,44 @@ void logs(TgBot::Bot& bot) {
                  }
              }}
     );
+
+    bot.getEvents().onCallbackQuery([&bot](const TgBot::CallbackQuery::Ptr& query) {
+        try {
+            TelegramBotMod::getInstance().getSelf().getLogger().info("callbackQuery data: {}", query->data);
+
+            std::string uuid   = query->data.substr(0, query->data.size() - 1);
+            char        action = query->data[query->data.size() - 1];
+
+
+            auto& state = browseStates.at(uuid);
+
+
+            switch (action) {
+            case DEL[0]:
+                browseStates.erase(uuid);
+                bot.getApi().deleteMessage(state.chatId, state.messageId);
+                return;
+            case NEXT[0]:
+                state.page = std::min(state.page + 1, state.maxPages);
+                break;
+            case PREV[0]:
+                state.page = std::max(state.page - 1, 0);
+                break;
+            default:
+                throw std::exception(("unknown action: " + std::string(1, action)).c_str());
+                break;
+            };
+
+            applyBrowseState(bot, state);
+            bot.getApi().answerCallbackQuery(query->id);
+        } catch (const std::exception& e) {
+            auto error = std::string(e.what());
+            TelegramBotMod::getInstance().getSelf().getLogger().error("telegram browse logs error: " + error);
+            bot.getApi().answerCallbackQuery(query->id, error, true);
+        }
+    });
 };
 
+void cleanLogsStorage() { browseStates.clear(); }
 
 } // namespace telegram_bot::tgcommands

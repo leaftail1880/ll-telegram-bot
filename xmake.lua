@@ -11,7 +11,6 @@ end
 add_requires("levibuildscript")
 add_requires("tgbot-cpp")
 add_requires("libcurl",{system = false})
-add_requires("csvparser")
 add_requires("utfcpp")
 
 if not has_config("vs_runtime") then
@@ -32,7 +31,6 @@ target("TelegramBot")
     add_packages("levilamina")
     add_packages("tgbot-cpp")
     add_packages("libcurl")
-    add_packages("csvparser")
     add_packages("utfcpp")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")

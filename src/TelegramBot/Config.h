@@ -77,7 +77,10 @@ struct CustomCommands {
 struct LogSource {
     std::string folder     = "logs";
     std::string fileFormat = "player_actions_{year}-{month}-{day}.csv";
-    std::string parser     = "csv";
+
+    std::string columnDelimeter = ",";
+    size_t      nameColumnIndex = 2;
+    size_t      maxPages        = 15;
 };
 
 struct LogsSearchCommand {
@@ -86,7 +89,7 @@ struct LogsSearchCommand {
 };
 
 struct Config {
-    int          version          = 11;
+    int          version          = 13;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;

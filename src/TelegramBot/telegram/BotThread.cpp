@@ -20,7 +20,6 @@
 #include <thread>
 
 
-
 namespace telegram_bot {
 struct OutgoingTelegramMessage {
     std::string  text;
@@ -200,6 +199,9 @@ void stopThread() {
 
         if (mBotThread.joinable()) mBotThread.join();
     }
+
+    tgcommands::disable();
+    tgcommands::cleanLogsStorage();
 }
 
 void startThread() {
