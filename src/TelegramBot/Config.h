@@ -16,8 +16,8 @@ struct ConfigChatSource {
     std::string deathTextFormat    = "{{translated}}";
     std::string deathTextLogFormat = "{{killer}} killed {{deadMobOrPlayer}} cause={{cause}}";
 
-    std::string joinTextFormat  = "+{{username}}";
-    std::string leaveTextFormat = "-{{username}}";
+    std::string joinTextFormat  = "\\+{{username}}";
+    std::string leaveTextFormat = "\\-{{username}}";
 
     std::string langCode = "en_US";
 
