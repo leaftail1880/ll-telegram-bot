@@ -109,7 +109,7 @@ void runTelegramBot() {
             }
         });
 
-        TgBot::TgLongPoll longPoll(bot); // timeout is unused here. Thanks to tgbotcpp devs
+        TgBot::TgLongPoll longPoll(bot, config.telegramPollingLimit, config.telegramPollingTimeoutSec);
         logger.info(
             "Bot long polling thread started, username={} timeout={} chat={} topic={}",
             bot.getApi().getMe()->username,

@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#define VERSION 14
+#define VERSION 15
 
 namespace telegram_bot {
 
@@ -100,7 +100,9 @@ struct Config {
 
     std::int64_t telegramAdminChatId = 0;
 
-    long telegramTimeoutSec = 5;
+    long telegramTimeoutSec        = 5;
+    long telegramPollingTimeoutSec = 4;
+    int  telegramPollingLimit      = 100;
 
     bool telegramIgnoreCommands   = true;
     bool telegramIgnoreOtherBots  = true;
