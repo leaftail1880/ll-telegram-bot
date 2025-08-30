@@ -97,7 +97,9 @@ void mcCommand(TgBot::Bot& bot) {
                  auto         chatId  = message->chat->id;
                  std::int32_t topicId = message->isTopicMessage ? message->messageThreadId : 0;
                  ll::coro::keepThis([command, chatId, topicId]() -> ll::coro::CoroTask<void> {
-                     auto commandMessage = "`/" + Utils::escapeStringForTelegram(command) + "`\n";
+                     auto commandMessage = config.customCommands.includeCommandInResponse
+                                                ? "`/" + Utils::escapeStringForTelegram(command) + "`\n"
+                                                : "";
 
                      try {
                          auto result = runCommand(command, config.customCommands.langCode);
