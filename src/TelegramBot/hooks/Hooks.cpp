@@ -52,10 +52,10 @@ LL_TYPE_INSTANCE_HOOK(
                 if (!config.telegram.chatFormat.empty()) {
                     auto message =
                         (Utils::replacePlaceholders(config.telegram.chatFormat, config.minecraft, placeholders, true));
-                    telegram_bot::sendTelegramMessage(message, config.telegramChatId);
+                    telegram_bot::queneTgMessage(message, config.telegramChatId);
                 }
                 if (!config.minecraft.consoleLogFormat.empty()) {
-                    TelegramBotMod::getInstance().getSelf().getLogger().info(
+                    logger.info(
                         Utils::replacePlaceholders(config.minecraft.consoleLogFormat, config.minecraft, placeholders)
                     );
                 }
@@ -64,9 +64,7 @@ LL_TYPE_INSTANCE_HOOK(
 
         return origin(identifier, packet);
     } catch (const std::exception& e) {
-        TelegramBotMod::getInstance().getSelf().getLogger().error(
-            "PlayerSendMessageHook error: " + std::string(e.what())
-        );
+        logger.error("PlayerSendMessageHook error: " + std::string(e.what()));
     }
 }
 

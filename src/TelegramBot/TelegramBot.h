@@ -32,4 +32,6 @@ private:
     ll::mod::NativeMod& mSelf;
 };
 
+#define logger telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger()
+
 } // namespace telegram_bot

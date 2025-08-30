@@ -27,12 +27,8 @@ std::string getName(const TgBot::User::Ptr& user);
 
 std::string getUsername(const TgBot::User::Ptr& user);
 
-void reply(
-    TgBot::Bot&                bot,
-    const TgBot::Message::Ptr& message,
-    const std::string&         text,
-    const std::string&         parseMode = ""
-);
+TgBot::Message::Ptr
+reply(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const std::string& text, const std::string& parseMode = "");
 
 std::string getParams(const std::string& text);
 } // namespace telegram_bot

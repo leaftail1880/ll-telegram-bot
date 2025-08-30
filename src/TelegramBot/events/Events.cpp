@@ -41,7 +41,7 @@ void subscribe() {
 
             auto message =
                 Utils::replacePlaceholders(config.telegram.joinTextFormat, config.minecraft, placeholders, true);
-            sendTelegramMessage(message);
+            queneTgMessage(message);
         });
 
     playerLeaveEventListener =
@@ -52,7 +52,7 @@ void subscribe() {
 
             auto message =
                 Utils::replacePlaceholders(config.telegram.leaveTextFormat, config.minecraft, placeholders, true);
-            sendTelegramMessage(message);
+            queneTgMessage(message);
         });
 
     mobDieEventListener = eventBus.emplaceListener<ll::event::MobDieEvent>([](ll::event::MobDieEvent& event) {
@@ -91,14 +91,14 @@ void subscribe() {
                     true
                 );
 
-                sendTelegramMessage(message);
+                queneTgMessage(message);
             }
 
             if (config.minecraft.deathTextLogFormat.empty()) {
                 auto message =
                     Utils::replaceKillPlaceholders(config.minecraft.deathTextLogFormat, config.minecraft, placeholders);
 
-                TelegramBotMod::getInstance().getSelf().getLogger().info(message);
+                logger.info(message);
             }
 
             if (!config.minecraft.deathTextFormat.empty()) {
@@ -135,8 +135,8 @@ void subscribe() {
                         if (ignored) continue;
 
                         wasEmergent = true;
-                        TelegramBotMod::getInstance().getSelf().getLogger().info("EMERGENT {} /{}", sender, command);
-                        sendTelegramMessage(
+                        logger.info("EMERGENT {} /{}", sender, command);
+                        queneTgMessage(
                             Utils::replacePlaceholders(
                                 emergency.message,
                                 {.sourceName = "CommandLogEmergency"},
@@ -175,9 +175,9 @@ void subscribe() {
                 }
 
                 if (shouldLog) {
-                    TelegramBotMod::getInstance().getSelf().getLogger().info("{} /{}", sender, command);
+                    logger.info("{} /{}", sender, command);
 
-                    sendTelegramMessage(
+                    queneTgMessage(
                         Utils::replacePlaceholders(
                             config.commandLogs.message,
                             {.sourceName = "CommandLog"},
@@ -193,9 +193,7 @@ void subscribe() {
                     );
                 }
             } catch (const std::exception& e) {
-                TelegramBotMod::getInstance().getSelf().getLogger().error(
-                    "Command event listener error: " + std::string(e.what())
-                );
+                logger.error("Command event listener error: " + std::string(e.what()));
             }
         }
     );

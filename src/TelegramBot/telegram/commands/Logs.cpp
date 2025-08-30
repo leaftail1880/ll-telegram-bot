@@ -292,7 +292,7 @@ std::string searchForLogsInFile(
             );
         };
         if (lineCount % 100000 == 0) {
-            telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
+            logger.info(
                 "Reading " + filename + " line " + std::to_string(lineCount) + " found " + std::to_string(result.size())
             );
         }
@@ -359,18 +359,14 @@ searchForLogsInSource(LogSearchParams& params, telegram_bot::LogSource& source, 
     std::string           expectedFileName = replaceFileFormat(source.fileFormat, params);
     std::string           info             = "searching for '" + expectedFileName + "', files:\n";
 
-    telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
-        "searching for: {} in {}",
-        expectedFileName,
-        source.folder
-    );
+    logger.info("searching for: {} in {}", expectedFileName, source.folder);
 
     for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
         if (!entry.is_regular_file()) continue;
 
         auto filename  = entry.path().filename().string();
         info          += filename + "\n";
-        telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info("found: " + filename);
+        logger.info("found file: " + filename);
 
         if (filename == expectedFileName) {
             return {.result = searchForLogsInFile(params, source, entry.path().string(), onUpdate), .info = ""};
@@ -453,7 +449,8 @@ void applyBrowseState(TgBot::Bot& bot, const BrowseState& state) {
 void logsSearchInit(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const std::string& params) {
     auto parsed = parseLogSearchParams(params);
     if (parsed.name.empty() && parsed.text.empty()) {
-        return telegram_bot::reply(bot, message, "No params to search!");
+        telegram_bot::reply(bot, message, "No params to search!");
+        return;
     };
 
     auto smessage = bot.getApi().sendMessage(
@@ -493,13 +490,13 @@ void logsSearchInit(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const s
             };
 
             applyBrowseState(bot, state);
-            TelegramBotMod::getInstance().getSelf().getLogger().info("set uuid {}", uuid);
+            logger.info("set uuid {}", uuid);
 
             browseStates[uuid] = state;
         }
     } catch (const std::exception& e) {
         auto error = std::string(e.what());
-        TelegramBotMod::getInstance().getSelf().getLogger().error("telegram search logs error: " + error);
+        logger.error("telegram search logs error: " + error);
         onUpdate("Logs search failed: " + error);
     }
 }
@@ -527,9 +524,7 @@ void logs(TgBot::Bot& bot) {
                          logsSearchInit(bot, message, params);
                      } catch (const std::exception& e) {
                          auto error = std::string(e.what());
-                         TelegramBotMod::getInstance().getSelf().getLogger().error(
-                             "telegram search logs error: " + error
-                         );
+                         logger.error("telegram search logs error: " + error);
                          telegram_bot::reply(bot, message, "Logs search init failed: " + error);
                      }
                  }
@@ -538,7 +533,7 @@ void logs(TgBot::Bot& bot) {
 
     bot.getEvents().onCallbackQuery([&bot](const TgBot::CallbackQuery::Ptr& query) {
         try {
-            TelegramBotMod::getInstance().getSelf().getLogger().info("callbackQuery data: {}", query->data);
+            logger.info("callbackQuery data: {}", query->data);
 
             std::string uuid   = query->data.substr(0, query->data.size() - 1);
             char        action = query->data[query->data.size() - 1];
@@ -567,7 +562,7 @@ void logs(TgBot::Bot& bot) {
             bot.getApi().answerCallbackQuery(query->id);
         } catch (const std::exception& e) {
             auto error = std::string(e.what());
-            TelegramBotMod::getInstance().getSelf().getLogger().error("telegram browse logs error: " + error);
+            logger.error("telegram browse logs error: " + error);
             bot.getApi().answerCallbackQuery(query->id, error, true);
         }
     });

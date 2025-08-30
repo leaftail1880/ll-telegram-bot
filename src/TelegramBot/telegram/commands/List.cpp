@@ -33,7 +33,7 @@ void list() {
                          text += "\n" + Utils::escapeStringForTelegram(player.second.mName.get());
                      }
 
-                     sendTelegramMessage(text, chatId, topicId);
+                     queneTgMessage(text, chatId, topicId);
 
                      co_return;
                  }).launch(ll::thread::ServerThreadExecutor::getDefault());

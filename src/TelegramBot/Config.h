@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#define VERSION 14
+
 namespace telegram_bot {
 
 struct ConfigChatSource {
@@ -72,6 +74,8 @@ struct CustomCommandConfig {
 struct CustomCommands {
     std::vector<CustomCommandConfig> commands;
     std::string                      langCode = "en_US";
+
+    bool includeCommandInResponse = true;
 };
 
 struct LogSource {
@@ -89,7 +93,7 @@ struct LogsSearchCommand {
 };
 
 struct Config {
-    int          version          = 13;
+    int          version          = VERSION;
     std::string  telegramBotToken = "INSERT YOUR TOKEN HERE";
     std::int64_t telegramChatId   = 0;
     std::int32_t telegramTopicId  = -1;

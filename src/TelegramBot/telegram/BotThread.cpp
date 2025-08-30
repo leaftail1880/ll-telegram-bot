@@ -27,7 +27,6 @@ struct OutgoingTelegramMessage {
     std::int32_t topicId;
 };
 
-[[nodiscard]] ll::mod::NativeMod& getSelf() { return TelegramBotMod::getInstance().getSelf(); };
 
 std::mutex                          outgoingMsgTelegramMutex;
 std::queue<OutgoingTelegramMessage> outgoingMsgTelegramQueue;
@@ -38,7 +37,7 @@ void threadSafeBroadcast(const std::string& message) {
         try {
             Utils::broadcast(message);
         } catch (const std::exception& e) {
-            getSelf().getLogger().error("threadSafeBroadcast error: " + std::string(e.what()));
+            logger.error("threadSafeBroadcast error: " + std::string(e.what()));
         }
         co_return;
     }).launch(ll::thread::ServerThreadExecutor::getDefault());
@@ -49,7 +48,7 @@ std::string removeFormatCodes(const std::string& input) {
     return std::regex_replace(input, pattern, "");
 }
 
-void sendTelegramMessage(const std::string& message, std::int64_t chatId, std::int32_t topicId) {
+void queneTgMessage(const std::string& message, std::int64_t chatId, std::int32_t topicId) {
     std::lock_guard lock(outgoingMsgTelegramMutex);
 
     if (chatId == 0) chatId = config.telegramChatId;
@@ -64,6 +63,7 @@ void sendTelegramMessage(const std::string& message, std::int64_t chatId, std::i
 
 std::atomic<bool> mBotRunning = false;
 std::thread       mBotThread;
+std::thread       mMessagesThread;
 
 void runTelegramBot() {
     try {
@@ -100,17 +100,17 @@ void runTelegramBot() {
                     );
                 }
                 if (!config.telegram.consoleLogFormat.empty()) {
-                    getSelf().getLogger().info(
+                    logger.info(
                         Utils::replacePlaceholders(config.telegram.consoleLogFormat, config.telegram, placeholders)
                     );
                 }
             } catch (const std::exception& e) {
-                getSelf().getLogger().error("onAnyMessage error: " + std::string(e.what()));
+                logger.error("onAnyMessage error: " + std::string(e.what()));
             }
         });
 
         TgBot::TgLongPoll longPoll(bot); // timeout is unused here. Thanks to tgbotcpp devs
-        getSelf().getLogger().info(
+        logger.info(
             "Bot long polling thread started, username={} timeout={} chat={} topic={}",
             bot.getApi().getMe()->username,
             config.telegramTimeoutSec,
@@ -136,11 +136,41 @@ void runTelegramBot() {
             try {
                 longPoll.start();
             } catch (const std::exception& e) {
-                getSelf().getLogger().error("Polling error: " + std::string(e.what()));
+                logger.error("Polling error: " + std::string(e.what()));
                 // Wait before retrying
                 std::this_thread::sleep_for(std::chrono::seconds(5));
             }
+        }
 
+        if (!config.telegramStopMessage.empty()) {
+            bot.getApi().sendMessage(
+                config.telegramChatId,
+                config.telegramStopMessage,
+                nullptr,
+                nullptr,
+                nullptr,
+                "MarkdownV2",
+                false,
+                {},
+                config.telegramTopicId == -1 ? 0 : config.telegramTopicId
+            );
+        }
+    } catch (const std::exception& e) {
+        logger.error("Bot thread fatal: " + std::string(e.what()));
+    }
+
+    logger.info("Thread stopped");
+}
+
+void runMessagesThread() {
+    try {
+
+        logger.info("Message sender thread started");
+
+        TgBot::MyCurlHttpClient httpClient;
+        TgBot::Bot              bot(telegram_bot::config.telegramBotToken, httpClient);
+
+        while (mBotRunning) {
             // Process queued messages
             std::queue<OutgoingTelegramMessage> batch;
             {
@@ -163,40 +193,27 @@ void runTelegramBot() {
                         message.topicId == -1 ? 0 : message.topicId
                     );
                 } catch (const std::exception& e) {
-                    getSelf().getLogger().error(
+                    logger.error(
                         "Telegram quened send message '" + message.text + "' failed: " + std::string(e.what())
                     );
                 }
                 batch.pop();
             }
         }
-
-        if (!config.telegramStopMessage.empty()) {
-            bot.getApi().sendMessage(
-                config.telegramChatId,
-                config.telegramStopMessage,
-                nullptr,
-                nullptr,
-                nullptr,
-                "MarkdownV2",
-                false,
-                {},
-                config.telegramTopicId == -1 ? 0 : config.telegramTopicId
-            );
-        }
     } catch (const std::exception& e) {
-        getSelf().getLogger().error("Bot fatal: " + std::string(e.what()));
+        logger.error("Bot sender thread fatal: " + std::string(e.what()));
     }
 
-    getSelf().getLogger().info("Thread stopped");
+    logger.info("Thread sender thread stopped");
 }
 
 
 void stopThread() {
     if (mBotRunning) {
-        getSelf().getLogger().info("Stopping thread...");
+        logger.info("Stopping threads...");
         mBotRunning = false;
 
+        if (mMessagesThread.joinable()) mMessagesThread.join();
         if (mBotThread.joinable()) mBotThread.join();
     }
 
@@ -206,8 +223,9 @@ void stopThread() {
 
 void startThread() {
     if (!mBotRunning) {
-        mBotRunning = true;
-        mBotThread  = std::thread(&runTelegramBot);
+        mBotRunning     = true;
+        mBotThread      = std::thread(&runTelegramBot);
+        mMessagesThread = std::thread(&runMessagesThread);
     }
 }
 

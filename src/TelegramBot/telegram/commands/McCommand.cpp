@@ -38,11 +38,11 @@ struct CommandResult {
     bool        success;
 };
 
-CommandResult runCommand(std::string& commandName, std::string& langCode) {
+CommandResult runCommand(const std::string& commandName, std::string& langCode) {
     try {
         std::string outputStr;
         auto        origin =
-            ServerCommandOrigin("TelegramBot", ll::service::getLevel()->asServer(), CommandPermissionLevel::Owner, 0);
+            ServerCommandOrigin(commandName, ll::service::getLevel()->asServer(), CommandPermissionLevel::Owner, 0);
 
         auto command = ll::service::getMinecraft()->mCommands->compileCommand(
             ::HashedString(commandName),
@@ -69,7 +69,7 @@ CommandResult runCommand(std::string& commandName, std::string& langCode) {
         return {.output = outputStr, .success = success};
     } catch (const std::exception& e) {
         auto err = std::string(e.what());
-        TelegramBotMod::getInstance().getSelf().getLogger().error("runCommand error: " + err);
+        logger.error("runCommand error: " + err);
         return {.output = err, .success = false};
     }
 };
@@ -80,33 +80,45 @@ void mcCommand(TgBot::Bot& bot) {
             {.name        = cmd.name,
              .description = cmd.description,
              .adminOnly   = cmd.adminOnly,
-             .listener =
-                 [&bot, &cmd](const TgBot::Message::Ptr& message) {
-                     std::string command = std::string(cmd.command);
+             .listener    = [&bot, &cmd](const TgBot::Message::Ptr& message) -> void {
+                 std::string command = std::string(cmd.command);
 
-                     bool hasParams = command.find("$1") != std::string::npos;
-                     if (hasParams) {
-                         auto params = getParams(message->text);
-                         if (params.empty()) return telegram_bot::reply(bot, message, "Command requires params");
-                         Utils::replaceString(command, "$1", params);
+                 bool hasParams = command.find("$1") != std::string::npos;
+                 if (hasParams) {
+                     auto params = getParams(message->text);
+                     if (params.empty()) {
+                         telegram_bot::reply(bot, message, "Command requires params");
+                         return;
                      }
-                     telegram_bot::reply(bot, message, "Executing command `" + command + "`...", "MarkdownV2");
+                     Utils::replaceString(command, "$1", params);
+                 }
 
-                     auto         chatId  = message->chat->id;
-                     std::int32_t topicId = message->isTopicMessage ? message->messageThreadId : 0;
-                     ll::coro::keepThis([&command, chatId, topicId]() -> ll::coro::CoroTask<void> {
-                         try {
-                             auto result  = runCommand(command, config.customCommands.langCode);
-                             auto message = Utils::escapeStringForTelegram(result.output);
-                             sendTelegramMessage(message, chatId, topicId);
-                         } catch (const std::exception& e) {
-                             TelegramBotMod::getInstance().getSelf().getLogger().error(
-                                 "telegram runCommand error: " + std::string(e.what())
-                             );
-                         }
-                         co_return;
-                     }).launch(ll::thread::ServerThreadExecutor::getDefault());
-                 }}
+
+                 auto         chatId  = message->chat->id;
+                 std::int32_t topicId = message->isTopicMessage ? message->messageThreadId : 0;
+                 ll::coro::keepThis([command, chatId, topicId]() -> ll::coro::CoroTask<void> {
+                     auto commandMessage = "`/" + Utils::escapeStringForTelegram(command) + "`\n";
+
+                     try {
+                         auto result = runCommand(command, config.customCommands.langCode);
+                         auto prefix = result.success ? "✅ " : "❌ ";
+
+                         commandMessage += std::string(prefix) + Utils::escapeStringForTelegram(result.output);
+
+                         queneTgMessage(commandMessage, chatId, topicId);
+                     } catch (const std::exception& e) {
+                         auto error = std::string(e.what());
+                         logger.error(
+                             "telegram runCommand {} commandMessage {} error {}",
+                             command,
+                             commandMessage,
+                             error
+                         );
+                         queneTgMessage(command + "\n" += error, chatId, topicId);
+                     }
+                     co_return;
+                 }).launch(ll::thread::ServerThreadExecutor::getDefault());
+             }}
         );
     }
 };

@@ -16,7 +16,7 @@ bool exists(const std::string& command) {
 
 void add(const Command& command) {
     if (exists(command.name)) {
-        telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().error("Cmd already exists " + command.name);
+        logger.error("Cmd already exists " + command.name);
     } else {
         mCommands.push_back(command);
     }
@@ -35,7 +35,7 @@ std::vector<TgBot::BotCommand::Ptr> botCmdFromCmd(const std::vector<Command>& cm
     std::vector<TgBot::BotCommand::Ptr> botCmds;
 
     for (auto& command : cmds) {
-        TgBot::BotCommand::Ptr cmd = TgBot::BotCommand::Ptr(new TgBot::BotCommand);
+        TgBot::BotCommand::Ptr cmd = std::make_shared<TgBot::BotCommand>();
         cmd->command               = command.name;
         cmd->description           = command.description;
         botCmds.push_back(cmd);
@@ -56,18 +56,17 @@ void subscribe(TgBot::Bot& bot) {
         adminCommands.push_back(cmd);
 
         bot.getEvents().onCommand(cmd.name, [&bot, &cmd](const TgBot::Message::Ptr& message) {
-            telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().info(
-                telegram_bot::getUsername(message->from) + " used " + message->text
-            );
+            logger.info(telegram_bot::getUsername(message->from) + " used " + message->text);
 
-            if (!isAllowed(cmd, message)) return reply(bot, message, "This command is not allowed here!");
+            if (!isAllowed(cmd, message)) {
+                reply(bot, message, "This command is not allowed here!");
+                return;
+            }
 
             try {
                 cmd.listener(message);
             } catch (const std::exception& e) {
-                telegram_bot::TelegramBotMod::getInstance().getSelf().getLogger().error(
-                    "Error in cmd " + cmd.name + ":" + std::string(e.what())
-                );
+                logger.error("Error in bot command " + cmd.name + ": " + std::string(e.what()));
             }
         });
     }
@@ -103,8 +102,9 @@ std::string getUsername(const TgBot::User::Ptr& user) {
     return getName(user);
 }
 
-void reply(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const std::string& text, const std::string& parseMode) {
-    bot.getApi().sendMessage(
+TgBot::Message::Ptr
+reply(TgBot::Bot& bot, const TgBot::Message::Ptr& message, const std::string& text, const std::string& parseMode) {
+    return bot.getApi().sendMessage(
         message->chat->id,
         text,
         nullptr,
